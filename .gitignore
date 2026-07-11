@@ -21,9 +21,9 @@
 /.crm-sales-engine/oauth_exchange.py
 # Retired-agent backups containing plaintext old credentials:
 /_archive/
-# The generated secrets bundle itself (belt-and-braces; it's written outside the repo):
-*secrets-bundle*
+# The generated secrets bundle + password file (belt-and-braces; they're written outside the repo):
 nobridge-crm-secrets-*.zip
+nobridge-crm-secrets-PASSWORD*
 
 # --- Prospect data / PII / operational state (public repo => keep local) ----
 /.crm-fulfillment/created.json
