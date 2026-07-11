@@ -1,0 +1,27 @@
+{
+ "object_id": "b5575a8c-c4de-42cb-887e-913b5822ad11",
+ "fields": {
+  "id": "9120b5db-bb61-46d9-ad47-254a4c149d85",
+  "createdAt": "e80dfed8-68dc-493a-9f3e-0eaa22f42d4c",
+  "createdBy": "ebb1699c-01d0-4b7b-9eb7-60f1cac425cc",
+  "deletedAt": "83425cc0-a6cc-47d4-9946-c7cc0a3100d1",
+  "position": "96764d9a-744b-43a7-9b84-43953cce1638",
+  "searchVector": "19e6ea3e-6fe7-4e2a-962d-a8e3836efbc7",
+  "updatedAt": "329e32bc-8437-4e53-b1ef-e140d5c828c2",
+  "updatedBy": "bc81c24c-b65c-414d-bafb-b6588502d952",
+  "timelineActivities": "198f8f42-b121-43f7-8db7-7b3a6882e402",
+  "attachments": "3423e6af-a78d-49e9-9ced-7e7a57248494",
+  "noteTargets": "19ade3b1-3045-4fe6-b584-2b7b50620ab0",
+  "taskTargets": "9032db83-bddc-4663-afa0-f1d12712e356",
+  "name": "52b8c1a3-7c3c-4d8c-b7b4-36fda9039aaa",
+  "status": "1659155c-b843-4e66-ae15-3459df0a71ac",
+  "description": "253c0335-271d-43e4-8b29-08c07ff1c582",
+  "schedule": "9f506fd2-7358-4712-8d8f-233d4f6cc50d",
+  "code": "753e3da9-5133-4d74-846d-b09f9a00fcb6",
+  "lastRunAt": "1e06407b-66dd-49f0-96c9-f571693e1ef7",
+  "lastResult": "f0d99e1f-11df-411b-aa8c-c7a49c24f7c3",
+  "systemdUnit": "4921b863-44de-49cf-8c97-e7f9c1d5a42f",
+  "scriptPath": "c3160c59-7213-45f3-a812-fb2085e6e68a"
+ },
+ "view_id": "9aaaa6d3-f0eb-4408-8a95-98d94969354b"
+}

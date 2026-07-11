@@ -1,0 +1,53 @@
+# Nobridge Finance — its OWN compose project (name: nobridge-finance), fully
+# isolated from the Twenty CRM project. Now includes a dedicated Postgres so the
+# app no longer depends on Supabase.
+#
+# Deploy on the VM:  docker compose -f docker-compose.finance.yml up -d
+# Stop (CRM safe):   docker compose -f docker-compose.finance.yml down
+name: nobridge-finance
+
+services:
+  # Dedicated Postgres for Finance — separate from the CRM's twenty-db.
+  # Not exposed to the host; only the finance app reaches it on the compose net.
+  finance-db:
+    image: postgres:17
+    container_name: nobridge-finance-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_PASSWORD: ${FINANCE_DB_PASSWORD}
+      POSTGRES_DB: finance
+    volumes:
+      - finance-db-data:/var/lib/postgresql/data
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance -d finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  finance:
+    image: nobridge-finance:latest
+    pull_policy: never
+    container_name: nobridge-finance
+    restart: unless-stopped
+    depends_on:
+      finance-db:
+        condition: service_healthy
+    # Localhost-only; Caddy reverse-proxies /finance -> here. Host 3100 (Twenty owns 3000).
+    ports:
+      - "127.0.0.1:3100:3000"
+    env_file:
+      - .env.finance
+    mem_limit: 1g
+    memswap_limit: 1g
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  finance-db-data:

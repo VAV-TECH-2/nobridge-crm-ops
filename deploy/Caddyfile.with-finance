@@ -1,0 +1,38 @@
+heydeal.co {
+    encode zstd gzip
+
+    # Nobridge Finance — PUBLIC submission surface (NO auth): the /submit page,
+    # its write-only API (/api/public/*), and the shared static assets it needs
+    # to load. Listed BEFORE the auth'd @finance handle so these specific paths
+    # bypass basic_auth; everything else under /finance stays gated.
+    @financePublic path /finance/submit /finance/submit/* /finance/api/public/* /finance/_next/* /finance/dark-noise.jpg /finance/favicon.ico
+    handle @financePublic {
+        reverse_proxy 127.0.0.1:3100
+    }
+
+    # Nobridge Finance — everything else under /finance. Finance now performs its
+    # OWN role-based auth (Google sign-in + CRM role → signed session cookie), so
+    # Caddy no longer gates it. The @financePublic bypass above still applies; the
+    # app's middleware exempts /finance/login and /finance/api/auth/*. To roll back
+    # to the shared password, restore /etc/caddy/Caddyfile.bak.<ts> and reload.
+    @finance path /finance /finance/*
+    handle @finance {
+        reverse_proxy 127.0.0.1:3100
+    }
+
+    # Nobridge Operations (Twenty CRM) — everything else. Unchanged from the
+    # original config, just wrapped in handle {} so the /finance route can sit
+    # in front of it.
+    handle {
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        @fonts path /fonts/*
+        header @fonts Cache-Control "public, max-age=31536000, immutable"
+
+        @images path /images/*
+        header @images Cache-Control "public, max-age=86400"
+
+        reverse_proxy 127.0.0.1:3000
+    }
+}

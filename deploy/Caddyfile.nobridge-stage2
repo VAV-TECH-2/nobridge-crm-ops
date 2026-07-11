@@ -1,0 +1,102 @@
+# nobridge.co migration — STAGE 2 (final): all three services live on
+# nobridge.co subdomains; heydeal.co / ops.heydeal.co are permanent 301
+# redirects. Exception: ops.heydeal.co/mcp/* KEEPS PROXYING to the engine —
+# MCP clients don't follow redirects, so already-registered claude.ai
+# connectors keep working until everyone has re-added the node.nobridge.co
+# URLs (grace path; safe to remove later).
+
+crm.nobridge.co {
+    encode zstd gzip
+
+    # Legacy path: the CRM UI overlay bundle still links relative /finance.
+    # Send it to Finance's new home (path + query preserved, /finance stripped).
+    # route{} forces listed order — bare directives would run redir BEFORE uri
+    # (Caddy directive order) and leak the /finance prefix into the target.
+    @finpath path /finance /finance/*
+    handle @finpath {
+        route {
+            uri strip_prefix /finance
+            redir https://fin.nobridge.co{uri} 301
+        }
+    }
+
+    handle {
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        @fonts path /fonts/*
+        header @fonts Cache-Control "public, max-age=31536000, immutable"
+
+        @images path /images/*
+        header @images Cache-Control "public, max-age=86400"
+
+        reverse_proxy 127.0.0.1:3000
+    }
+}
+
+# Nobridge Finance at its own subdomain root (image built with empty
+# NEXT_PUBLIC_BASE_PATH). The app performs its own auth (Google sign-in +
+# CRM-role session); /submit and /api/public/* are its public surface — no
+# Caddy gating on purpose.
+fin.nobridge.co {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3100
+}
+
+# Nobridge Automations — ops dashboard + ops MCP connector.
+node.nobridge.co {
+    encode zstd gzip
+
+    # Ops MCP connector for claude.ai custom connectors — the sales-engine's
+    # streamable-HTTP endpoint. Auth is the secret token in the URL path,
+    # enforced by the engine itself; NO basic_auth on this path (Claude cannot
+    # send Basic credentials). The engine port is loopback-only on the host.
+    handle /mcp/* {
+        request_body {
+            max_size 1MB
+        }
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    # Read-only ops dashboard — still password-gated (user: nobridge).
+    handle {
+        basic_auth {
+            nobridge $2a$14$KkMwpTfjS.7F6HwPsB8pnO8WjBu.PfY4ZPKP1qOJFv6Y.c50ApRX2
+        }
+        reverse_proxy 127.0.0.1:3200
+    }
+}
+
+# ------------------------------------ legacy hosts: permanent 301 redirects --
+
+heydeal.co {
+    # Old finance deep links: strip the /finance prefix, keep the rest.
+    # route{} forces listed order (redir would otherwise run before uri).
+    @finpath path /finance /finance/*
+    handle @finpath {
+        route {
+            uri strip_prefix /finance
+            redir https://fin.nobridge.co{uri} 301
+        }
+    }
+
+    # Everything else was the CRM (incl. the overlay bundle's baked logo URL
+    # https://heydeal.co/images/nobridge-logo-2.png — path-preserving).
+    handle {
+        redir https://crm.nobridge.co{uri} 301
+    }
+}
+
+ops.heydeal.co {
+    # GRACE PATH — keep the old MCP connector URLs answering (see header note).
+    handle /mcp/* {
+        request_body {
+            max_size 1MB
+        }
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    handle {
+        redir https://node.nobridge.co{uri} 301
+    }
+}

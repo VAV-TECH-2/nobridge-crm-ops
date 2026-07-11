@@ -1,0 +1,7 @@
+[Unit]
+Description=External Workflows registry sync (mirror VM automations into the CRM)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/heydeal-automation-registry/registry_sync.py

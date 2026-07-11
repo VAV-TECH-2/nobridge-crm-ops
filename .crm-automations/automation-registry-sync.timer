@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the External Workflows registry sync every 5 minutes
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=300
+AccuracySec=15s
+Unit=automation-registry-sync.service
+
+[Install]
+WantedBy=timers.target

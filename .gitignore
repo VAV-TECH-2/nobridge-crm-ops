@@ -1,0 +1,59 @@
+# ============================================================================
+# Nobridge CRM ops workspace — root .gitignore
+# This repo (VAV-TECH-2/nobridge-crm-ops) is PUBLIC. Anything secret, PII,
+# oversized, or belonging to a nested repo is excluded here.
+# ============================================================================
+
+# --- Nested git repos (each has its own GitHub remote; never track here) ----
+# twenty/            -> VAV-TECH-2/CRM (frontend fork, canonical remote "vt2")
+# .crm-automations/dashboard/ -> VAV-TECH-2/nobridge-ops-dashboard
+/twenty/
+/.crm-automations/dashboard/
+
+# --- SECRETS (delivered to teammates via the secrets bundle, never git) -----
+# Live long-lived Twenty API JWT:
+/.crm-sales-engine/engine_twenty_token.txt
+# Scripts with hardcoded Google Chat webhook / OAuth client secret / refresh tokens:
+/.crm-sales-engine/digest_and_demo.py
+/.crm-sales-engine/naluri.py
+/.crm-sales-engine/test_e2e.py
+/.crm-sales-engine/test_reconcile.py
+/.crm-sales-engine/oauth_exchange.py
+# Retired-agent backups containing plaintext old credentials:
+/_archive/
+# The generated secrets bundle itself (belt-and-braces; it's written outside the repo):
+*secrets-bundle*
+nobridge-crm-secrets-*.zip
+
+# --- Prospect data / PII / operational state (public repo => keep local) ----
+/.crm-fulfillment/created.json
+/.crm-fulfillment/state.json
+/.crm-fulfillment/networking_meta.json
+/.crm-fulfillment/networking_moved.json
+/.crm-fulfillment/rollback_*.json
+/.crm-migrate/resolved.json
+/.crm-migrate/dump.txt
+/.crm-migrate/lastcontact.txt
+/.crm-migrate/lastcontact.sql
+/.crm-migrate-seller/resolved.json
+/.crm-migrate-seller/dump.txt
+/.crm-migrate-seller/lastcontact.txt
+/.crm-migrate-seller/lastcontact.sql
+/.crm-sales-engine/stage_migration_manifest.json
+/.crm-sales-engine/digest_card.json
+*.log
+*.xlsx
+*.csv
+
+# --- Oversized / stale artifacts (GitHub hard limit is 100 MB per file) -----
+/.deploy-tmp/
+/deploy/finance/_artifact/
+
+# --- OS / editor / language junk -------------------------------------------
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+desktop.ini
+.venv/
+node_modules/

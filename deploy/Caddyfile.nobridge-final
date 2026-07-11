@@ -1,0 +1,65 @@
+# nobridge.co — FINAL (heydeal.co fully retired 2026-07-05).
+# The heydeal.co / ops.heydeal.co blocks are GONE: the domain is being reused
+# for an unrelated project. Old links are dead by design. The /finance redirect
+# on crm.nobridge.co stays: users with a cached pre-migration CRM bundle still
+# click a relative /finance switcher entry until their cache expires.
+
+crm.nobridge.co {
+    encode zstd gzip
+
+    # Legacy path from cached overlay bundles (see header note).
+    # route{} forces listed order — bare directives would run redir BEFORE uri
+    # (Caddy directive order) and leak the /finance prefix into the target.
+    @finpath path /finance /finance/*
+    handle @finpath {
+        route {
+            uri strip_prefix /finance
+            redir https://fin.nobridge.co{uri} 301
+        }
+    }
+
+    handle {
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        @fonts path /fonts/*
+        header @fonts Cache-Control "public, max-age=31536000, immutable"
+
+        @images path /images/*
+        header @images Cache-Control "public, max-age=86400"
+
+        reverse_proxy 127.0.0.1:3000
+    }
+}
+
+# Nobridge Finance at its own subdomain root (image built with empty
+# NEXT_PUBLIC_BASE_PATH). The app performs its own auth (Google sign-in +
+# CRM-role session); /submit and /api/public/* are its public surface — no
+# Caddy gating on purpose.
+fin.nobridge.co {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3100
+}
+
+# Nobridge Automations — ops dashboard + ops MCP connector.
+node.nobridge.co {
+    encode zstd gzip
+
+    # Ops MCP connector for claude.ai custom connectors — the sales-engine's
+    # streamable-HTTP endpoint. Auth is the secret token in the URL path,
+    # enforced by the engine itself; NO basic_auth on this path (Claude cannot
+    # send Basic credentials). The engine port is loopback-only on the host.
+    handle /mcp/* {
+        request_body {
+            max_size 1MB
+        }
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    # Ops dashboard — the app performs its own Google sign-in + CRM-role session
+    # (Admin/Manager only), mirroring fin.nobridge.co. No Caddy gating on purpose;
+    # /login and /api/auth/* are its public surface, everything else self-gates.
+    handle {
+        reverse_proxy 127.0.0.1:3200
+    }
+}

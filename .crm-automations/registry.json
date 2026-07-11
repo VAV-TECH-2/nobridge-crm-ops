@@ -1,0 +1,11 @@
+[
+ {
+  "key": "registry-sync",
+  "name": "Automation Registry Sync",
+  "unit": "automation-registry-sync",
+  "scriptPath": "/opt/heydeal-automation-registry/registry_sync.py",
+  "schedule": "Every 5 minutes",
+  "description": "This is the helper that keeps this whole list up to date. Every 5 minutes it quietly checks each automation running on the server -- whether it's on, when it last ran, and what it did -- and refreshes the cards you see here. In short: it's a self-running 'refresh' that makes sure what you see in this menu matches what's actually happening behind the scenes. You don't need to touch it.",
+  "recordId": null
+ }
+]

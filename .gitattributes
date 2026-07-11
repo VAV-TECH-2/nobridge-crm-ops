@@ -1,0 +1,29 @@
+# Cross-OS line-ending policy: everything text is LF in the repo and in the
+# working tree, on every OS. Only PowerShell scripts check out as CRLF.
+# (Do NOT rely on core.autocrlf — this file wins on Mac and Windows alike.)
+* text=auto eol=lf
+
+# Explicit for the common types in this workspace
+*.sh      text eol=lf
+*.py      text eol=lf
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.json    text eol=lf
+*.service text eol=lf
+*.timer   text eol=lf
+Caddyfile* text eol=lf
+
+# Windows-native scripts want CRLF
+*.ps1     text eol=crlf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Binaries — never touch line endings
+*.png     binary
+*.jpg     binary
+*.ico     binary
+*.zip     binary
+*.tgz     binary
+*.tar.gz  binary
+*.gz      binary

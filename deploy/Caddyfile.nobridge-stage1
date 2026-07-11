@@ -1,0 +1,130 @@
+# nobridge.co migration — STAGE 1 (transition): the three new vhosts are live
+# while heydeal.co / ops.heydeal.co keep serving exactly as before. Installed
+# first so Let's Encrypt certs issue and the new hosts can be verified before
+# any service is cut over. Stage 2 flips the heydeal hosts to 301 redirects.
+
+# ---------------------------------------------------------------- new hosts --
+
+crm.nobridge.co {
+    encode zstd gzip
+
+    # Legacy path: the CRM UI overlay bundle still links relative /finance.
+    # Send it to Finance's new home (path + query preserved, /finance stripped).
+    @finpath path /finance /finance/*
+    handle @finpath {
+        route {
+            uri strip_prefix /finance
+            redir https://fin.nobridge.co{uri} 301
+        }
+    }
+
+    handle {
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        @fonts path /fonts/*
+        header @fonts Cache-Control "public, max-age=31536000, immutable"
+
+        @images path /images/*
+        header @images Cache-Control "public, max-age=86400"
+
+        reverse_proxy 127.0.0.1:3000
+    }
+}
+
+# Nobridge Finance at its own subdomain root (image built with empty
+# NEXT_PUBLIC_BASE_PATH). The app performs its own auth (Google sign-in +
+# CRM-role session); /submit and /api/public/* are its public surface — no
+# Caddy gating on purpose.
+fin.nobridge.co {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3100
+}
+
+# Nobridge Automations — ops dashboard + ops MCP connector.
+node.nobridge.co {
+    encode zstd gzip
+
+    # Ops MCP connector for claude.ai custom connectors — the sales-engine's
+    # streamable-HTTP endpoint. Auth is the secret token in the URL path,
+    # enforced by the engine itself; NO basic_auth on this path (Claude cannot
+    # send Basic credentials). The engine port is loopback-only on the host.
+    handle /mcp/* {
+        request_body {
+            max_size 1MB
+        }
+        reverse_proxy 127.0.0.1:8080
+    }
+
+    # Read-only ops dashboard — still password-gated (user: nobridge).
+    handle {
+        basic_auth {
+            nobridge $2a$14$KkMwpTfjS.7F6HwPsB8pnO8WjBu.PfY4ZPKP1qOJFv6Y.c50ApRX2
+        }
+        reverse_proxy 127.0.0.1:3200
+    }
+}
+
+# ------------------------------------------- legacy hosts (still serving) --
+
+heydeal.co {
+    encode zstd gzip
+    # Nobridge Finance — PUBLIC submission surface (NO auth): the /submit page,
+    # its write-only API (/api/public/*), and the shared static assets it needs
+    # to load. Listed BEFORE the auth'd @finance handle so these specific paths
+    # bypass basic_auth; everything else under /finance stays gated.
+    @financePublic path /finance/submit /finance/submit/* /finance/api/public/* /finance/_next/* /finance/dark-noise.jpg /finance/favicon.ico
+    handle @financePublic {
+        reverse_proxy 127.0.0.1:3100
+    }
+
+    # Nobridge Finance — everything else under /finance. Finance now performs its
+    # OWN role-based auth (Google sign-in + CRM role → signed session cookie), so
+    # Caddy no longer gates it. The @financePublic bypass above still applies; the
+    # app's middleware exempts /finance/login and /finance/api/auth/*. To roll back
+    # to the shared password, restore /etc/caddy/Caddyfile.bak.<ts> and reload.
+    @finance path /finance /finance/*
+    handle @finance {
+        reverse_proxy 127.0.0.1:3100
+    }
+
+    # Nobridge Operations (Twenty CRM) — everything else. Unchanged from the
+    # original config, just wrapped in handle {} so the /finance route can sit
+    # in front of it.
+    handle {
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+
+        @fonts path /fonts/*
+        header @fonts Cache-Control "public, max-age=31536000, immutable"
+
+        @images path /images/*
+        header @images Cache-Control "public, max-age=86400"
+
+        reverse_proxy 127.0.0.1:3000
+    }
+}
+
+# Nobridge Automations — ops dashboard + ops MCP connector (added 2026-07-04).
+ops.heydeal.co {
+	encode zstd gzip
+
+	# Ops MCP connector for claude.ai custom connectors — the sales-engine's
+	# streamable-HTTP endpoint. Auth is the secret token in the URL path,
+	# enforced by the engine itself; NO basic_auth on this path (Claude cannot
+	# send Basic credentials). The engine port is loopback-only on the host.
+	handle /mcp/* {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Read-only ops dashboard — unchanged, still password-gated (user: nobridge).
+	handle {
+		basic_auth {
+			nobridge $2a$14$KkMwpTfjS.7F6HwPsB8pnO8WjBu.PfY4ZPKP1qOJFv6Y.c50ApRX2
+		}
+		reverse_proxy 127.0.0.1:3200
+	}
+}
