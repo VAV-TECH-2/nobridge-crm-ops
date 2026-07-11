@@ -1,0 +1,9 @@
+[Unit]
+Description=Nobridge CRM blocklist guard (mirror admin blocklist to all members + sweep blocked-domain companies/people)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /opt/heydeal-blocklist-guard/guard.py

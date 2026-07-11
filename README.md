@@ -62,6 +62,7 @@ This folder contains, for those properties:
 | Unit | Cadence | Purpose |
 |---|---|---|
 | Client Type sync | every 2 min | Mirrors `Company.clientType` → the 5 split opportunity boards. |
+| `blocklist-guard` | every 2 min | Enforces the cold-email sending-domain blocklist: mirrors the admin's CRM blocklist (Settings → Accounts → Blocklist, vilca@nobridge.co = master list) to every workspace member and soft-deletes Companies/People auto-created from blocked `@domain`s (skips records attached to real deals/notes; ids logged to `swept.json`). Source: `.crm-automations/blocklist-guard/`. |
 | `automation-registry-sync` | every 5 min | Refreshes the CRM "automations" list from systemd state. Source: `.crm-automations/registry_sync.py`. |
 | Sales Engine (reconciler) | periodic tick | Twenty → Google Tasks/Chat automation. Source lives in `Desktop\sales-engine-vm` (**not** this folder). |
 | Finance timers | periodic | Finance snapshots/backups. |
@@ -122,6 +123,7 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 - `register_automation.py` — CLI to add/update a registry entry (idempotent).
 - `dashboard/dashboard.py` — **source of the `node.nobridge.co` ops dashboard** (stdlib HTTP server, binds 127.0.0.1:3200; Caddy adds TLS, the app does its own Google sign-in — CRM Admin/Manager only). Deploy = `scp` this file to the VM + restart its service.
 - `dashboard/azure_ai.py`, `digest.py` — **legacy** sales-digest AI (the gpt-5.4 deployment was deleted 2026-07-04; reads a server-side `ai.env`).
+- `blocklist-guard/` — **source of the `blocklist-guard` VM timer** (see table above): `guard.py` (mirror + sweep), `seed_blocklist.py` (one-time seed from the Instantly export, `domains-seed.txt` = the 125 sending domains as of 2026-07-11), systemd units, `deploy-blocklist-guard.sh`. **To block a new sending domain: add `@thedomain.co` in the CRM as vilca@nobridge.co under Settings → Accounts → Blocklist** — the guard propagates it to everyone and cleans matching records within ~2 min. Remove an entry there to unblock (mirrored copies retire automatically; already-deleted records stay in the trash).
 
 ### `.crm-fulfillment/` — fulfillment pipeline tooling · LIVE ⚠️
 - `tw.py` — **shared Twenty API client.** Mints a JWT from `APP_SECRET` fetched live over SSH (`docker exec twenty-server-1 printenv APP_SECRET`). WORKSPACE_ID / API_KEY_ID are hardcoded constants here.
@@ -247,6 +249,7 @@ Setup checklist (details in ONBOARDING.md):
 - 🖼️ **Workspace logo:** the Settings → General uploader works natively. **Do not** hardcode the brand Avatar in the frontend — that override blocked uploads once and was reverted.
 - 📊 **Ops dashboard deploy** = `scp .crm-automations/dashboard/dashboard.py` to the VM + restart its service. It reads live from the sales-engine `.env`. Auth is app-level Google sign-in (CRM Admin/Manager only, like Finance); secrets live in `/opt/heydeal-automations-dashboard/dashboard-auth.env`, (re)written by `deploy/dashboard/wire-dashboard-auth.sh`. To let someone in: give them Admin/Manager in the CRM, or add their email to `FULL_ACCESS_EMAILS`.
 - 🤖 **Claude's own Google MCP account is `vilca@understoryagency.com`, NOT Nobridge.** It has no Nobridge deal mail and no Calendar scope. For "last contact" data, query the CRM's synced `message`/`messageParticipant` tables instead.
+- 📧 **Cold-email sending domains are blocklisted in the CRM** (125 lookalike domains: asiadeals.co, equitydeals.co, nobridge*.co/.com/.info, …). Emails involving them do **not** sync and matching Companies/People are auto-removed by the `blocklist-guard` timer. **Reply workflow:** when a prospect replies to a cold inbox, forward it to your `@nobridge.co` mailbox (the forward itself won't appear in the CRM — expected), then **compose a brand-new email to the prospect's real address** quoting the reply below. That new thread syncs and registers the prospect's own company/person (e.g. apple.com), never the sending domain. The master list is vilca's blocklist under Settings → Accounts → Blocklist.
 
 ---
 

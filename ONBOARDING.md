@@ -138,4 +138,5 @@ All three URLs should answer, and SSH should list the twenty/finance containers.
 Read `README.md` §4 (Directory Guide) and §9 (gotchas). Highlights:
 - Twenty is **pinned to v2.7.3 — never boot `latest`** (it migrates the DB forward and prod then crash-loops).
 - Many `.crm-*` scripts write to the live CRM. LIVE vs HISTORICAL vs scratch is documented per directory.
+- **Cold-email sending domains are blocklisted** — the `blocklist-guard` timer mirrors vilca's CRM blocklist to every member and auto-removes Companies/People created from those domains. Don't manually create records on a `*deals*/*nobridge*`-lookalike domain (they'll vanish within 2 min), and when a cold-email reply comes in, forward it to your `@nobridge.co` inbox and **compose a fresh email to the prospect's real address** — that's what registers the prospect correctly in the CRM (README §9).
 - `deploy/vm-rollback.sh` **destroys all VM data**. Last resort only.
