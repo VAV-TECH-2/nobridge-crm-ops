@@ -115,11 +115,13 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 | `Caddyfile.nobridge-final` | **Current** Caddy config (post-heydeal retirement). |
 | `Caddyfile`, `Caddyfile.nobridge-stage1/2`, `Caddyfile.with-finance` | Superseded (migration artifacts / old auth model). |
 | `vm-rollback.sh` | ⚠️ Full VM reset — **drops all volumes**, mints new secrets, regenerates compose + Caddy. Destructive; last resort. |
+| `draft-cleanup/` | systemd unit + timer for the hourly Gmail draft-ghost sweep (see `.crm-sales-engine/cleanup_draft_messages.py`). Installed at `/etc/systemd/system/crm-draft-cleanup.{service,timer}` on the VM. |
 | `finance/` | 22 deploy/migration/audit scripts for the Finance app + `AUDIT-FINDINGS.md`. Key ones: `deploy-finance-image.sh`, `deploy-overlay.sh`, `create-*-table.sh`, `add-invoice-mgmt-columns.sh`. |
 | `finance/_artifact/finance-image.tar.gz` | 158 MB pre-built Finance image (Jun 10 — likely stale). |
 
 ### `.crm-automations/` — registry sync + ops dashboard source · LIVE ⚠️
 - `registry_sync.py` + `registry.json` + `*.service`/`*.timer` — the 5-min automation-registry sync running on the VM.
+- `clienttype-sync/` — **source of the Company↔board sync** (VM: `/opt/heydeal-clienttype-sync/sync.py`, 2-min timer, shows as "Look-Up Integration" in the CRM). Tagging a company auto-creates its deal on the matching board; **deleting a deal from a board removes that tag from the company within ~2 min (Rule D, added 2026-07-21) so deletes stick** — re-tag >15 min later to re-create. Deploy = `scp sync.py` to the VM path.
 - `register_automation.py` — CLI to add/update a registry entry (idempotent).
 - `dashboard/dashboard.py` — **source of the `node.nobridge.co` ops dashboard** (stdlib HTTP server, binds 127.0.0.1:3200; Caddy adds TLS, the app does its own Google sign-in — CRM Admin/Manager only). Deploy = `scp` this file to the VM + restart its service.
 - `dashboard/azure_ai.py`, `digest.py` — **legacy** sales-digest AI (the gpt-5.4 deployment was deleted 2026-07-04; reads a server-side `ai.env`).
@@ -135,6 +137,7 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 > This is **not** the running Sales Engine — that is `Desktop\sales-engine-vm`. This folder holds the one-time setup/migration scripts and prototypes.
 - `setup_fields_se.py`, `migrate_stages.py` + `stage_migration_manifest.json`, `finalize_stages.py`, `rollback_stages.py` — the 4→8 stage pipeline migration (HISTORICAL).
 - `register_webhook.py` / `delete_webhook.py`, `probe*.py`, `test_*.py` — webhook + query tooling.
+- `cleanup_draft_messages.py` — **LIVE** ⚠️ mutates prod. Twenty v2.7.3's incremental Gmail sync (`history.list`) can't exclude drafts, so reply drafts get imported as OUTGOING "sent" messages (one per autosave). This script cross-checks every OUTGOING message against Gmail (DRAFT label or 404 = ghost) and soft-deletes the ghosts, manifest at VM `~/crm-draft-cleanup/cleaned.json`. Dry-run by default; `--apply` to delete. **Must run ON the VM** (it shells into the docker containers locally). Deployed at `/opt/crm-draft-cleanup/`, swept hourly by `crm-draft-cleanup.timer` (units in `deploy/draft-cleanup/`).
 - `digest_and_demo.py`, `naluri.py`, `digest_preview.py` — digest prototypes. ⚠️ **`digest_and_demo.py`/`naluri.py` contain a hardcoded Google Chat webhook URL.**
 - ⚠️ **`engine_twenty_token.txt` — a live, long-lived Twenty API JWT (valid for years).** Real secret. `tw.py` here still points at retired `heydeal.co`.
 - 🔒 **Not in git:** `engine_twenty_token.txt`, `digest_and_demo.py`, `naluri.py`, `test_e2e.py`, `test_reconcile.py`, `oauth_exchange.py` are gitignored (they hold the token, a Chat webhook, a Google OAuth client secret + refresh tokens). On a fresh clone they arrive via the **secrets bundle** — see [`ONBOARDING.md`](./ONBOARDING.md) §4 and `scripts/make-secrets-bundle.sh`.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Bidirectional Company<->opportunity-type sync (5 segments)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/heydeal-clienttype-sync/sync.py
