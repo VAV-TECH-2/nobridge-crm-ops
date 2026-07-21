@@ -1,0 +1,9 @@
+[Unit]
+Description=Soft-delete Gmail drafts that Twenty's history sync imported as sent messages
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=azureuser
+ExecStart=/usr/bin/python3 /opt/crm-draft-cleanup/cleanup_draft_messages.py --apply --since-days 3
