@@ -13,6 +13,8 @@
 # --- SECRETS (delivered to teammates via the secrets bundle, never git) -----
 # Live long-lived Twenty API JWT:
 /.crm-sales-engine/engine_twenty_token.txt
+# Live long-lived Twenty API JWT for the website sign-up integration:
+/.crm-sales-engine/website_twenty_token.txt
 # Scripts with hardcoded Google Chat webhook / OAuth client secret / refresh tokens:
 /.crm-sales-engine/digest_and_demo.py
 /.crm-sales-engine/naluri.py
