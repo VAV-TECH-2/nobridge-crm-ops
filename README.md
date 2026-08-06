@@ -58,7 +58,7 @@ This folder contains, for those properties:
 
 **Containers** (via `sudo docker ps` on the VM): `twenty-server-1`, `twenty-worker-1`, `twenty-db-1` (Postgres 16), a Redis container, plus the isolated `nobridge-finance` project (app + `finance-db` Postgres 17).
 
-**Everything we run outside the stock CRM** — 15 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
+**Everything we run outside the stock CRM** — 16 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
 
 | What | Trigger | Cadence | Purpose |
 |---|---|---|---|
@@ -77,6 +77,9 @@ This folder contains, for those properties:
 | Nobridge Finance | container `nobridge-finance` | always on | fin.nobridge.co. |
 | Caddy | service `caddy` | always on | TLS + routing for all three domains. |
 | CRM frontend overlay | mounted into `twenty-server-1` | always on | Our UI bundle over stock Twenty; the server itself is unmodified. |
+| Website sign-ups | **Vercel** (off-VM) | per sign-up | nobridge.co writes an Opportunity into the CRM with `source = SIGN_UPS`, using its own 5-year API token (`.crm-sales-engine/mint_website_token.py`, gitignored output). **The only integration not on the VM** — no probe here can see it, so its card says "not monitored from here"; the real check is filtering Opportunities by Source = Sign Ups. |
+
+**Build pipelines (GitHub Actions, not scheduled — they run when someone pushes or dispatches):** `UI Build` in `VAV-TECH-2/CRM` produces the frontend overlay bundle; `build-image` in `VAV-TECH-2/nobridge-finance` produces the Finance image. Neither rebuilds anything on the server by itself — the artifact still has to be copied across, so the live site can lag the code.
 
 ⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
 

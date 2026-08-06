@@ -134,5 +134,14 @@
     "schedule": "Always on",
     "description": "Our branding and interface fixes, layered over the stock CRM. The CRM server itself is unmodified.",
     "recordId": null
+  },
+  {
+    "key": "website-signup",
+    "name": "Website Sign-ups",
+    "external": "Vercel",
+    "scriptPath": "",
+    "schedule": "On each sign-up",
+    "description": "Sign-ups on nobridge.co create an opportunity in the CRM, stamped Source = Sign Ups. Hosted on Vercel, so its health cannot be checked from this server.",
+    "recordId": null
   }
 ]
