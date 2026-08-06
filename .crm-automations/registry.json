@@ -1,71 +1,71 @@
 [
   {
     "key": "sales-engine",
-    "name": "Buy-side",
+    "name": "Buyer Deals \u2014 Automatic Next Steps",
     "container": "nobridge-sales-engine",
     "scriptPath": "/home/azureuser/sales-engine/src/index.ts",
     "schedule": "Continuous (reconciles the CRM every 5 min; reminders fire 09:00-18:00 Jakarta)",
-    "description": "Buy-side automation. Watches buy-side opportunities and, as they move through the pipeline, creates tasks and fires timed reminders / overdue escalations into the buy-side Google Chat space. Also runs follow-up chases, no-show rebooking, and 90-day re-engage, and detects calendar bookings + email replies. Reads the CRM every 5 minutes. Runs as a standalone Docker container on the VM (it is NOT a Twenty workflow).",
+    "description": "Watches every deal on the buyer boards and opens the next task you owe \u2014 chase the reply, book the call, send the paperwork \u2014 so nothing quietly goes cold. Each new task is also posted to the Nobridge Pipeline chat.",
     "recordId": "c04ea32f-205c-43ea-8814-e24448699f2d"
   },
   {
     "key": "saley-engine",
-    "name": "Sell-side",
+    "name": "Seller Deals \u2014 Automatic Next Steps",
     "container": "nobridge-sales-engine",
     "scriptPath": "/home/azureuser/sales-engine/src/automations/sellRegistry.ts",
     "schedule": "Continuous (reconciles sell deals every 5 min; reminders 09:00-18:00 Jakarta)",
-    "description": "Sell-side outbound cadence, in the same engine container. Watches the sellOpportunity object; creates tasks + posts reminders to the sell-side Chat space. Cadence: 1st reach-out -> 2nd (+2 business days) -> 3rd (+5 bd) -> Ghosted/re-engage in 2 weeks -> +5 bd -> park 3 months -> 3-month re-engage -> +3 bd -> DNC. Any reply intercepts to a meet-to-understand-needs task; terminal cleanup on Closed Won/Lost or DNC.",
+    "description": "The same thing for the seller side: watches each seller deal and opens the next task when it falls due, then posts it to chat.",
     "recordId": null
   },
   {
     "key": "fulfillment-engine",
-    "name": "Fulfillment",
+    "name": "Fulfillment \u2014 Automatic Next Steps",
     "container": "nobridge-sales-engine",
     "scriptPath": "/home/azureuser/sales-engine/src/automations/fulfillmentRegistry.ts",
     "schedule": "Continuous (reconciles fulfillment every 5 min; reminders 09:00-18:00 Jakarta)",
-    "description": "Fulfillment automation, running in the same engine container. Watches the Fulfillment object; on stage/Progress-Type changes it creates tasks (separate Fulfillment list) and posts timed follow-up reminders to the fulfillment Google Chat space. Cadence: chase on days 2, 4, 8, 12 and 26; if still quiet, a 14-day re-engage then one more full cycle, then dormant. Inbound replies are intercepted instantly, pausing the chase; everything is snapped to 09:00-18:00 Jakarta. Terminal cleanup when Outcome is set or Progress = Complete. A daily 06:35 cron refreshes each record's Last Contact + Days Since Contact.",
+    "description": "The same thing again for fulfillment records: keeps prospects moving through the stages by opening the next task at the right moment.",
     "recordId": null
   },
   {
     "key": "blocklist-guard",
-    "name": "Blocklist Guard",
+    "name": "Cold-Email Sender Blocker",
     "unit": "blocklist-guard",
     "scriptPath": "/opt/heydeal-blocklist-guard/guard.py",
     "schedule": "Every 2 minutes",
-    "description": "Enforces the cold-email sending-domain blocklist. The admin's CRM blocklist (Settings > Accounts > Blocklist, vilca@nobridge.co) is the master list; this mirrors it to every workspace member and soft-deletes any Company/Person auto-created from a blocked @domain (skips records attached to real deals/notes). Deleted ids logged to swept.json.",
+    "description": "Stops cold-email tools from filling the CRM with junk. Any company or contact created from a blocked sending domain is removed within a couple of minutes, and the block list you keep in Settings is copied out to everyone on the team.",
     "recordId": null
   },
   {
     "key": "clienttype-sync",
-    "name": "Client-Type Sync",
+    "name": "Company Tag \u2192 Deal Board",
     "unit": "clienttype-sync",
     "scriptPath": "/opt/heydeal-clienttype-sync/sync.py",
     "schedule": "Every 2 minutes",
-    "description": "Keeps the 5 pipeline boards in step with each Company's Client Type tags: tagging a company auto-creates its deal on that board, and deleting a deal from a board removes that tag from the company (so deletes stick). This is what the Sales Engine keys off to decide which deals to act on.",
+    "description": "Tag a company with a client type and its deal shows up on the matching board within about two minutes. Delete the deal from a board and the tag comes back off, so removals stick.",
     "recordId": null
   },
   {
     "key": "call-intelligence",
-    "name": "Call Intelligence",
+    "name": "Call Notes into the CRM",
     "scriptPath": "src/callintel/reconciler.ts (in nobridge-sales-engine)",
     "schedule": "Continuous (every 15 minutes)",
-    "description": "Reads each staff member's Google Meet Gemini call notes, writes a summary note onto the matching Company, Contact and deal record, and queues the call's follow-ups for approval on the dashboard's Calls tab.",
+    "description": "Collects the Gemini notes Google Meet writes after your calls, files a summary onto the matching company, contact and deal, and queues any action items for you to approve on the Calls tab.",
     "container": "nobridge-sales-engine"
   },
   {
     "key": "twenty-backup",
-    "name": "CRM Database Backup",
+    "name": "CRM Backup \u2014 Nightly",
     "watchPath": "/var/backups/twenty/db-*.sql.gz",
     "maxAgeHours": 30,
     "minBytes": 1000000,
     "scriptPath": "/usr/local/bin/twenty-backup.sh",
     "schedule": "Nightly 03:15",
-    "description": "The only backup of the entire CRM database. Fixed 2026-08-06 after 73 nights of silent failure; now refuses to keep an undersized dump.",
+    "description": "Takes a complete copy of the CRM database at 03:15 each night and keeps the last 14 days. This is the only backup of your CRM: if it stops, there is no second copy.",
     "recordId": null
   },
   {
     "key": "last-contacted-refresh",
-    "name": "Last Contacted Refresh",
+    "name": "\u201cLast Contacted\u201d Updater",
     "watchPath": [
       "/home/azureuser/last-contacted.log",
       "/home/azureuser/last-contacted-fulfillment.log"
@@ -73,75 +73,75 @@
     "maxAgeHours": 30,
     "scriptPath": "/home/azureuser/refresh-last-contacted.sql",
     "schedule": "Nightly 06:30 and 06:35",
-    "description": "Recalculates the Last Contacted wording on every deal, and the days since contact on fulfillment records.",
+    "description": "Every morning it works out when you last exchanged email with each company and writes it onto the deal in plain words \u2014 today, 3 days ago, no contact logged. It only runs overnight, so today's emails show up tomorrow.",
     "recordId": null
   },
   {
     "key": "crm-draft-cleanup",
-    "name": "Gmail Draft Cleanup",
+    "name": "Draft Email Cleanup",
     "unit": "crm-draft-cleanup",
     "scriptPath": "/opt/crm-draft-cleanup/cleanup_draft_messages.py",
     "schedule": "Hourly",
-    "description": "Removes the phantom sent emails the CRM creates each time you autosave a draft reply.",
+    "description": "The CRM mistakes every autosave of a draft reply for an email you actually sent. This clears out those phantom emails each hour so the history on a contact stays truthful.",
     "recordId": null
   },
   {
     "key": "finance-db-backup",
-    "name": "Finance Database Backup",
+    "name": "Finance Backup \u2014 Nightly",
     "unit": "finance-db-backup",
     "scriptPath": "/home/azureuser/finance/backup-finance-db.sh",
     "schedule": "Nightly 03:30",
-    "description": "Nightly backup of the Nobridge Finance database, which is separate from the CRM.",
+    "description": "A nightly copy of the Finance app's database, which is entirely separate from the CRM's and needs its own backup.",
     "recordId": null
   },
   {
     "key": "ops-dashboard",
-    "name": "Ops Dashboard",
+    "name": "This Dashboard",
     "unit": "heydeal-automations-dashboard",
     "scriptPath": "/opt/heydeal-automations-dashboard/dashboard.py",
     "schedule": "Always on",
-    "description": "This site. Read-only view of every automation, plus call approvals.",
+    "description": "The site you are looking at. A read-only view of everything running, plus the Calls tab where you approve action items from your calls.",
     "recordId": null
   },
   {
     "key": "ops-mcp",
-    "name": "Claude Connector (Ops)",
+    "name": "Claude's Access to the CRM",
     "container": "nobridge-sales-engine",
     "schedule": "Always on",
-    "description": "The connector that lets Claude read and write the CRM in conversation. Runs inside the sales engine.",
+    "description": "The link that lets Claude read and write your CRM in conversation \u2014 ask about deals, read an email thread, update a record. It runs inside the automation engine, so if the engine is down this is too.",
     "recordId": null
   },
   {
     "key": "nobridge-finance",
-    "name": "Nobridge Finance",
+    "name": "Finance App",
     "container": "nobridge-finance",
     "schedule": "Always on",
-    "description": "The finance app at fin.nobridge.co \u2014 submissions, approvals and payment tracking.",
+    "description": "The finance site at fin.nobridge.co: cost and income submissions, the approval queue, and payment tracking.",
     "recordId": null
   },
   {
     "key": "caddy",
-    "name": "Web Front Door",
+    "name": "Web Traffic Router",
     "unit": "caddy",
     "schedule": "Always on",
-    "description": "Handles HTTPS and routes each domain to the right application. All three sites depend on it.",
+    "description": "Points each web address at the right application and handles the padlock on the browser bar. Everything public depends on it \u2014 if this stops, all three sites go down together.",
     "recordId": null
   },
   {
     "key": "crm-frontend",
-    "name": "CRM Interface Overlay",
+    "name": "CRM Custom Look",
     "container": "twenty-server-1",
     "schedule": "Always on",
-    "description": "Our branding and interface fixes, layered over the stock CRM. The CRM server itself is unmodified.",
+    "description": "Our branding and layout fixes painted over the standard CRM \u2014 the logo, the workspace switcher, the link across to Finance. Appearance only; the CRM underneath is the untouched official product.",
     "recordId": null
   },
   {
     "key": "website-signup",
-    "name": "Website Sign-ups",
+    "name": "Website Sign-up Capture",
     "external": "Vercel",
     "scriptPath": "",
     "schedule": "On each sign-up",
-    "description": "Sign-ups on nobridge.co create an opportunity in the CRM, stamped Source = Sign Ups. Hosted on Vercel, so its health cannot be checked from this server.",
+    "description": "When somebody signs up on nobridge.co a deal is created in the CRM automatically and marked as coming from Sign Ups. This one runs on the website's host rather than our server, so its health cannot be checked from here.",
     "recordId": null
   }
 ]
