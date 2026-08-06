@@ -58,14 +58,27 @@ This folder contains, for those properties:
 
 **Containers** (via `sudo docker ps` on the VM): `twenty-server-1`, `twenty-worker-1`, `twenty-db-1` (Postgres 16), a Redis container, plus the isolated `nobridge-finance` project (app + `finance-db` Postgres 17).
 
-**systemd timers on the VM** (background automation, not in Docker):
-| Unit | Cadence | Purpose |
-|---|---|---|
-| Client Type sync | every 2 min | Mirrors `Company.clientType` → the 5 split opportunity boards. |
-| `blocklist-guard` | every 2 min | Enforces the cold-email sending-domain blocklist: mirrors the admin's CRM blocklist (Settings → Accounts → Blocklist, vilca@nobridge.co = master list) to every workspace member and soft-deletes Companies/People auto-created from blocked `@domain`s (skips records attached to real deals/notes; ids logged to `swept.json`). Source: `.crm-automations/blocklist-guard/`. |
-| `automation-registry-sync` | every 5 min | Refreshes the CRM "automations" list from systemd state. Source: `.crm-automations/registry_sync.py`. |
-| Sales Engine (reconciler) | periodic tick | Twenty → Google Tasks/Chat automation. Source lives in `Desktop\sales-engine-vm` (**not** this folder). |
-| Finance timers | periodic | Finance snapshots/backups. |
+**Everything we run outside the stock CRM** — 15 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
+
+| What | Trigger | Cadence | Purpose |
+|---|---|---|---|
+| Buy-side engine | container `nobridge-sales-engine` | tick | Opens the next task owed on each buy-side deal. Source: `Desktop/sales-engine-vm` (**not** this folder). |
+| Sell-side engine | same container | tick | Same, for sell-side. |
+| Fulfillment engine | same container | tick | Same, for fulfillment records. |
+| Call intelligence | same container | every 15 min | Reads Gemini call notes from Meet, files a note + action items on the right records. |
+| Claude connector (ops MCP) | same container | always on | Lets Claude read/write the CRM in conversation. |
+| Client Type sync | timer `clienttype-sync` | every 2 min | Mirrors `Company.clientType` → the 5 split opportunity boards. |
+| `blocklist-guard` | timer | every 2 min | Enforces the cold-email sending-domain blocklist: mirrors the admin's blocklist (Settings → Accounts → Blocklist, vilca@nobridge.co = master list) to every member and soft-deletes Companies/People auto-created from blocked `@domain`s (skips records attached to real deals/notes; ids logged to `swept.json`). Source: `.crm-automations/blocklist-guard/`. |
+| Gmail draft cleanup | timer `crm-draft-cleanup` | hourly | Soft-deletes the phantom "sent" messages Twenty's sync creates on every draft autosave. |
+| Finance DB backup | timer `finance-db-backup` | nightly 03:30 | Dump of the Finance database. |
+| **CRM DB backup** | **crontab** 03:15 | nightly | ⚠️ The only backup of the CRM database. `/usr/local/bin/twenty-backup.sh`. Failed silently for 73 nights (wrong `pg_dump` role, no size check) until 2026-08-06 — it now refuses to keep an undersized dump and the dashboard judges it on output freshness. |
+| Last-contacted refresh | **crontab** 06:30/06:35 | nightly | Recomputes "Last Contacted" wording on deals and days-since on fulfillment. |
+| Ops dashboard | service `heydeal-automations-dashboard` | always on | node.nobridge.co itself. |
+| Nobridge Finance | container `nobridge-finance` | always on | fin.nobridge.co. |
+| Caddy | service `caddy` | always on | TLS + routing for all three domains. |
+| CRM frontend overlay | mounted into `twenty-server-1` | always on | Our UI bundle over stock Twenty; the server itself is unmodified. |
+
+⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
 
 **Domain note:** `heydeal.co` was the original domain and was **fully retired 2026-07-05** (no redirects; all old links dead). Any `heydeal.co` reference in a script here is **stale** — the live host is `crm.nobridge.co`.
 
@@ -119,10 +132,12 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 | `finance/` | 22 deploy/migration/audit scripts for the Finance app + `AUDIT-FINDINGS.md`. Key ones: `deploy-finance-image.sh`, `deploy-overlay.sh`, `create-*-table.sh`, `add-invoice-mgmt-columns.sh`. |
 | `finance/_artifact/finance-image.tar.gz` | 158 MB pre-built Finance image (Jun 10 — likely stale). |
 
-### `.crm-automations/` — registry sync + ops dashboard source · LIVE ⚠️
-- `registry_sync.py` + `registry.json` + `*.service`/`*.timer` — the 5-min automation-registry sync running on the VM.
+### `.crm-automations/` — automation registry + ops dashboard source · LIVE ⚠️
+- `registry.json` — **mirror** of the live registry at `/opt/heydeal-automation-registry/registry.json` on the VM (15 entries), which is what drives the dashboard's System tab. The VM copy is canonical; refresh this one after changing it.
+- `registry_sync.py` + `*.service`/`*.timer` — **HISTORICAL.** The 5-min sync that pushed the registry into the CRM's "External Workflows" object; retired 2026-07-04 along with that object. The registry has been hand-maintained since, which is why it had drifted to 6 entries while 15 things were running.
+- `dashboard/automation_docs.py` — **the plain-language documentation for everything we run outside the stock CRM**, rendered as the "How it works" tab on each System card: what it does, a flow diagram, what it reads and writes, how to tell when it has broken, and where the source and logs live. 10 automations with diagrams + 5 always-on services, plus a list of the 6 retired ones. **Anything registered needs an entry here under the same key** — `/api/docs` reports both cards with no docs and docs for cards that no longer exist, so drift in either direction is visible.
 - `clienttype-sync/` — **source of the Company↔board sync** (VM: `/opt/heydeal-clienttype-sync/sync.py`, 2-min timer, shows as "Look-Up Integration" in the CRM). Tagging a company auto-creates its deal on the matching board; **deleting a deal from a board removes that tag from the company within ~2 min (Rule D, added 2026-07-21) so deletes stick** — re-tag >15 min later to re-create. Deploy = `scp sync.py` to the VM path.
-- `register_automation.py` — CLI to add/update a registry entry (idempotent).
+- `register_automation.py` — CLI to add/update a registry entry (idempotent; also deployed on the VM at `/opt/heydeal-automation-registry/`). Every entry needs exactly one health probe: `--unit` (systemd), `--container` (Docker), or `--watch` (a glob of the output a crontab job produces, judged on freshness and size — the only honest signal for cron).
 - `dashboard/dashboard.py` — **source of the `node.nobridge.co` ops dashboard** (stdlib HTTP server, binds 127.0.0.1:3200; Caddy adds TLS, the app does its own Google sign-in — CRM Admin/Manager only). Deploy = `scp` this file to the VM + restart its service.
 - `dashboard/azure_ai.py`, `digest.py` — **legacy** sales-digest AI (the gpt-5.4 deployment was deleted 2026-07-04; reads a server-side `ai.env`).
 - `blocklist-guard/` — **source of the `blocklist-guard` VM timer** (see table above): `guard.py` (mirror + sweep), `seed_blocklist.py` (one-time seed from the Instantly export, `domains-seed.txt` = the 125 sending domains as of 2026-07-11), systemd units, `deploy-blocklist-guard.sh`. **To block a new sending domain: add `@thedomain.co` in the CRM as vilca@nobridge.co under Settings → Accounts → Blocklist** — the guard propagates it to everyone and cleans matching records within ~2 min. Remove an entry there to unblock (mirrored copies retire automatically; already-deleted records stay in the trash).
