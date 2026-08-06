@@ -15,9 +15,7 @@
 /.crm-sales-engine/engine_twenty_token.txt
 # Live long-lived Twenty API JWT for the website sign-up integration:
 /.crm-sales-engine/website_twenty_token.txt
-# Scripts with hardcoded Google Chat webhook / OAuth client secret / refresh tokens:
-/.crm-sales-engine/digest_and_demo.py
-/.crm-sales-engine/naluri.py
+# Scripts with hardcoded OAuth client secret / refresh tokens:
 /.crm-sales-engine/test_e2e.py
 /.crm-sales-engine/test_reconcile.py
 /.crm-sales-engine/oauth_exchange.py
@@ -42,7 +40,6 @@ nobridge-crm-secrets-PASSWORD*
 /.crm-migrate-seller/lastcontact.txt
 /.crm-migrate-seller/lastcontact.sql
 /.crm-sales-engine/stage_migration_manifest.json
-/.crm-sales-engine/digest_card.json
 *.log
 *.xlsx
 *.csv

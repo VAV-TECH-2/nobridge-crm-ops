@@ -81,7 +81,7 @@ This folder contains, for those properties:
 
 **Build pipelines (GitHub Actions, not scheduled — they run when someone pushes or dispatches):** `UI Build` in `VAV-TECH-2/CRM` produces the frontend overlay bundle; `build-image` in `VAV-TECH-2/nobridge-finance` produces the Finance image. Neither rebuilds anything on the server by itself — the artifact still has to be copied across, so the live site can lag the code.
 
-⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
+⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, **Google Chat notifications** (removed 2026-08-06 — the engines create CRM tasks and nothing else), and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
 
 **Domain note:** `heydeal.co` was the original domain and was **fully retired 2026-07-05** (no redirects; all old links dead). Any `heydeal.co` reference in a script here is **stale** — the live host is `crm.nobridge.co`.
 
@@ -138,11 +138,10 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 ### `.crm-automations/` — automation registry + ops dashboard source · LIVE ⚠️
 - `registry.json` — **mirror** of the live registry at `/opt/heydeal-automation-registry/registry.json` on the VM (15 entries), which is what drives the dashboard's System tab. The VM copy is canonical; refresh this one after changing it.
 - `registry_sync.py` + `*.service`/`*.timer` — **HISTORICAL.** The 5-min sync that pushed the registry into the CRM's "External Workflows" object; retired 2026-07-04 along with that object. The registry has been hand-maintained since, which is why it had drifted to 6 entries while 15 things were running.
-- `dashboard/automation_docs.py` — **the plain-language documentation for everything we run outside the stock CRM**, rendered as the "How it works" tab on each System card: what it does, a flow diagram, what it reads and writes, how to tell when it has broken, and where the source and logs live. 10 automations with diagrams + 5 always-on services, plus a list of the 6 retired ones. **Anything registered needs an entry here under the same key** — `/api/docs` reports both cards with no docs and docs for cards that no longer exist, so drift in either direction is visible.
+- `dashboard/automation_docs.py` — **the plain-language documentation for everything we run outside the stock CRM**, rendered as the "How it works" tab on each System card: what it does, a flow diagram, what it reads and writes, how to tell when it has broken, and where the source and logs live. 11 automations with diagrams + 5 always-on services (16 total), plus a list of the 7 retired ones. **Anything registered needs an entry here under the same key** — `/api/docs` reports both cards with no docs and docs for cards that no longer exist, so drift in either direction is visible.
 - `clienttype-sync/` — **source of the Company↔board sync** (VM: `/opt/heydeal-clienttype-sync/sync.py`, 2-min timer, shows as "Look-Up Integration" in the CRM). Tagging a company auto-creates its deal on the matching board; **deleting a deal from a board removes that tag from the company within ~2 min (Rule D, added 2026-07-21) so deletes stick** — re-tag >15 min later to re-create. Deploy = `scp sync.py` to the VM path.
 - `register_automation.py` — CLI to add/update a registry entry (idempotent; also deployed on the VM at `/opt/heydeal-automation-registry/`). Every entry needs exactly one health probe: `--unit` (systemd), `--container` (Docker), or `--watch` (a glob of the output a crontab job produces, judged on freshness and size — the only honest signal for cron).
 - `dashboard/dashboard.py` — **source of the `node.nobridge.co` ops dashboard** (stdlib HTTP server, binds 127.0.0.1:3200; Caddy adds TLS, the app does its own Google sign-in — CRM Admin/Manager only). Deploy = `scp` this file to the VM + restart its service.
-- `dashboard/azure_ai.py`, `digest.py` — **legacy** sales-digest AI (the gpt-5.4 deployment was deleted 2026-07-04; reads a server-side `ai.env`).
 - `blocklist-guard/` — **source of the `blocklist-guard` VM timer** (see table above): `guard.py` (mirror + sweep), `seed_blocklist.py` (one-time seed from the Instantly export, `domains-seed.txt` = the 125 sending domains as of 2026-07-11), systemd units, `deploy-blocklist-guard.sh`. **To block a new sending domain: add `@thedomain.co` in the CRM as vilca@nobridge.co under Settings → Accounts → Blocklist** — the guard propagates it to everyone and cleans matching records within ~2 min. Remove an entry there to unblock (mirrored copies retire automatically; already-deleted records stay in the trash).
 
 ### `.crm-fulfillment/` — fulfillment pipeline tooling · LIVE ⚠️
@@ -156,9 +155,8 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 - `setup_fields_se.py`, `migrate_stages.py` + `stage_migration_manifest.json`, `finalize_stages.py`, `rollback_stages.py` — the 4→8 stage pipeline migration (HISTORICAL).
 - `register_webhook.py` / `delete_webhook.py`, `probe*.py`, `test_*.py` — webhook + query tooling.
 - `cleanup_draft_messages.py` — **LIVE** ⚠️ mutates prod. Twenty v2.7.3's incremental Gmail sync (`history.list`) can't exclude drafts, so reply drafts get imported as OUTGOING "sent" messages (one per autosave). This script cross-checks every OUTGOING message against Gmail (DRAFT label or 404 = ghost) and soft-deletes the ghosts, manifest at VM `~/crm-draft-cleanup/cleaned.json`. Dry-run by default; `--apply` to delete. **Must run ON the VM** (it shells into the docker containers locally). Deployed at `/opt/crm-draft-cleanup/`, swept hourly by `crm-draft-cleanup.timer` (units in `deploy/draft-cleanup/`).
-- `digest_and_demo.py`, `naluri.py`, `digest_preview.py` — digest prototypes. ⚠️ **`digest_and_demo.py`/`naluri.py` contain a hardcoded Google Chat webhook URL.**
 - ⚠️ **`engine_twenty_token.txt` — a live, long-lived Twenty API JWT (valid for years).** Real secret. `tw.py` here still points at retired `heydeal.co`.
-- 🔒 **Not in git:** `engine_twenty_token.txt`, `digest_and_demo.py`, `naluri.py`, `test_e2e.py`, `test_reconcile.py`, `oauth_exchange.py` are gitignored (they hold the token, a Chat webhook, a Google OAuth client secret + refresh tokens). On a fresh clone they arrive via the **secrets bundle** — see [`ONBOARDING.md`](./ONBOARDING.md) §4 and `scripts/make-secrets-bundle.sh`.
+- 🔒 **Not in git:** `engine_twenty_token.txt`, `test_e2e.py`, `test_reconcile.py`, `oauth_exchange.py` are gitignored (they hold the token and a Google OAuth client secret + refresh tokens). On a fresh clone they arrive via the **secrets bundle** — see [`ONBOARDING.md`](./ONBOARDING.md) §4 and `scripts/make-secrets-bundle.sh`.
 
 ### `.crm-migrate/` & `.crm-migrate-seller/` — one-time imports · HISTORICAL
 Buyer (42 rows, 2026-06-11) and seller (32 rows, 2026-06-12) workbook → Opportunity imports. `match*.py` + `create.py`, with `resolved.json` and `lastcontact.*` outputs. Keep for rollback reference; do not re-run.
@@ -167,7 +165,7 @@ Buyer (42 rows, 2026-06-11) and seller (32 rows, 2026-06-12) workbook → Opport
 Single 158 MB `finance-image.tar.gz` (Jun 10). Deletable.
 
 ### `_archive/` — retired code + backups · HISTORICAL ⚠️ SENSITIVE
-Retired AI agents (Venice / Henry / Saley) + old sales-engine TypeScript source, backed up 2026-07-04, plus `gpt54-deployment-backup.json`. **The `.zip`/`.tgz` here contain old plaintext credentials** (a Twenty JWT, the now-deleted Azure OpenAI key, Chat webhooks, a Postgres password). Because of this, **the whole `CRM` folder should be treated as sensitive in transit** (encrypt the copy; don't put it in a shared/synced location).
+Retired AI agents (Venice / Henry / Saley) + old sales-engine TypeScript source, backed up 2026-07-04, plus `gpt54-deployment-backup.json`. **The `.zip`/`.tgz` here contain old plaintext credentials** (a Twenty JWT, the now-deleted Azure OpenAI key, retired Chat webhooks, a Postgres password). Because of this, **the whole `CRM` folder should be treated as sensitive in transit** (encrypt the copy; don't put it in a shared/synced location).
 
 ---
 
@@ -179,8 +177,6 @@ Retired AI agents (Venice / Henry / Saley) + old sales-engine TypeScript source,
 | **Azure OpenAI** | "mama" account (kept for other projects) | The `gpt-5.4` deployment was **deleted 2026-07-04**; AI digest features are off. | `az` |
 | **Google Cloud** | project `crm-system-499720` | **One** OAuth client shared by CRM login + Finance login, and Gmail/Calendar sync into the CRM. | `gcloud` |
 | **GitHub** | `VAV-TECH-2/nobridge-crm-ops` (this workspace) + `VAV-TECH-2/CRM` (frontend) + `VAV-TECH-2/nobridge-ops-dashboard` (dashboard) + `VAV-TECH-2/nobridge-finance` (finance) | Canonical repos + CI. Old `VAV-Technologies/*` org repos 404. | `gh` |
-| **Google Chat** | space "Nobridge Pipeline" | Single consolidated webhook for all pipeline notifications. | — |
-| **Google Tasks** | (via Sales Engine OAuth) | Task creation from CRM events. | — |
 | **Supabase** | — | ⚠️ **Decommissioned.** Finance migrated to a local Postgres on the VM (2026-06-04). Any Supabase reference is dead. | — |
 
 ---
@@ -194,12 +190,10 @@ Retired AI agents (Venice / Henry / Saley) + old sales-engine TypeScript source,
 | `APP_SECRET` | Twenty JWT signing | VM `/home/azureuser/twenty/.env` (also `docker exec twenty-server-1 printenv APP_SECRET`) |
 | `PG_DATABASE_PASSWORD` | Twenty Postgres | VM `/home/azureuser/twenty/.env` |
 | `AUTH_GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth (CRM+Finance login, Gmail/Calendar sync) | VM `/home/azureuser/twenty/.env` — ⚠️ **must be mirrored into the worker service** or Gmail sync silently fails |
-| Sales-engine webhooks + **4 MCP scope tokens** | Google Chat, MCP connectors | VM sales-engine `.env` — ⚠️ **never `sed` the webhook URLs**; all three webhook vars intentionally point to the same URL |
+| **4 MCP scope tokens** + inbound `TWENTY_WEBHOOK_SECRET` | MCP connectors, Twenty→engine webhook HMAC | VM sales-engine `.env` |
 | Finance DB password + agent API token | Finance Postgres, Finance agent/MCP | VM `.env.finance` (nobridge-finance compose project) |
 | **`engine_twenty_token.txt`** | Long-lived Twenty API JWT | 🗂️ **In this folder:** `.crm-sales-engine/engine_twenty_token.txt` |
-| Hardcoded Chat webhook URL | Google Chat | 🗂️ **In this folder:** `.crm-sales-engine/digest_and_demo.py`, `naluri.py` |
 | Old agent creds (Twenty JWT, PG pw, webhooks, Azure key) | mostly retired | 🗂️ **In this folder:** `_archive/ai-agents-*.{zip,tgz}` (plaintext) |
-| Server-side AI key (legacy) | Azure OpenAI (deployment deleted) | VM `/opt/heydeal-sales-digest/ai.env` |
 | **VM SSH private key** | SSH to the VM | 💻 **Local machine only:** `~/.ssh/id_rsa` — **does not move with this folder** |
 | Azure / GitHub / gcloud CLI auth | Azure, GitHub, GCP | 💻 Local CLI credential stores — re-auth on a new machine |
 
@@ -211,7 +205,7 @@ Cloning `nobridge-crm-ops` (plus the two nested repos via `scripts/setup.sh`) gi
 
 | Item | Location | Why it matters |
 |---|---|---|
-| **Sales Engine (running code)** | `Desktop\sales-engine-vm` | The canonical, deployed Twenty→Tasks/Chat automation. `.crm-sales-engine/` here is only its *setup* scripts. |
+| **Sales Engine (running code)** | `Desktop\Sales Engine VM` | The canonical, deployed Twenty→Tasks automation. `.crm-sales-engine/` here is only its *setup* scripts. |
 | **Finance app source** | `Desktop\Nobridge Finance\nobridge-finance` | The `fin.nobridge.co` app. This folder only has its *deploy* scripts (`deploy/finance/`). |
 | **VM SSH key** | `~/.ssh/id_rsa` | The **only** way to reach the VM. Without it nothing here works. |
 | **User CLI rules** | `~/CLAUDE.md` | Your global "use the CLI, don't kill processes" instructions for Claude. |

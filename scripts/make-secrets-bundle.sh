@@ -15,8 +15,6 @@ OUT="$HOME/Desktop/nobridge-crm-secrets-$(date +%Y%m%d).zip"
 # with the "SECRETS" section of .gitignore.
 FILES=(
   ".crm-sales-engine/engine_twenty_token.txt"
-  ".crm-sales-engine/digest_and_demo.py"
-  ".crm-sales-engine/naluri.py"
   ".crm-sales-engine/test_e2e.py"
   ".crm-sales-engine/test_reconcile.py"
   ".crm-sales-engine/oauth_exchange.py"
@@ -51,8 +49,6 @@ The zip already contains the correct relative paths, so restoring is just
 
 Files and what they are:
   .crm-sales-engine/engine_twenty_token.txt  live Twenty API JWT (prod!)
-  .crm-sales-engine/digest_and_demo.py       Chat webhook + OAuth creds inside
-  .crm-sales-engine/naluri.py                Chat webhook inside
   .crm-sales-engine/test_e2e.py              OAuth client secret + refresh token
   .crm-sales-engine/test_reconcile.py        OAuth client secret + refresh token
   .crm-sales-engine/oauth_exchange.py        OAuth client secret

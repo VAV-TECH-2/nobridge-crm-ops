@@ -5,7 +5,7 @@
     "container": "nobridge-sales-engine",
     "scriptPath": "/home/azureuser/sales-engine/src/index.ts",
     "schedule": "Continuous (reconciles the CRM every 5 min; reminders fire 09:00-18:00 Jakarta)",
-    "description": "Watches every deal on the buyer boards and opens the next task you owe \u2014 chase the reply, book the call, send the paperwork \u2014 so nothing quietly goes cold. Each new task is also posted to the Nobridge Pipeline chat.",
+    "description": "Watches every deal on the buyer boards and opens the next task you owe \u2014 chase the reply, book the call, send the paperwork \u2014 so nothing quietly goes cold.",
     "recordId": "c04ea32f-205c-43ea-8814-e24448699f2d"
   },
   {
@@ -14,7 +14,7 @@
     "container": "nobridge-sales-engine",
     "scriptPath": "/home/azureuser/sales-engine/src/automations/sellRegistry.ts",
     "schedule": "Continuous (reconciles sell deals every 5 min; reminders 09:00-18:00 Jakarta)",
-    "description": "The same thing for the seller side: watches each seller deal and opens the next task when it falls due, then posts it to chat.",
+    "description": "The same thing for the seller side: watches each seller deal and opens the next task when it falls due.",
     "recordId": null
   },
   {

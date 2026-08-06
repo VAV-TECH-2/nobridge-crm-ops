@@ -15,8 +15,6 @@ echo "Verifying…"
 OK=1
 for f in \
   ".crm-sales-engine/engine_twenty_token.txt" \
-  ".crm-sales-engine/digest_and_demo.py" \
-  ".crm-sales-engine/naluri.py" \
   ".crm-sales-engine/test_e2e.py" \
   ".crm-sales-engine/test_reconcile.py" \
   ".crm-sales-engine/oauth_exchange.py"; do
