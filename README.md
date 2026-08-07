@@ -61,7 +61,7 @@ This folder contains, for those properties:
 
 **Containers** (via `sudo docker ps` on the VM): `twenty-server-1`, `twenty-worker-1`, `twenty-db-1` (Postgres 16), a Redis container, plus the isolated `nobridge-finance` project (app + `finance-db` Postgres 17).
 
-**Everything we run outside the stock CRM** — 12 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
+**Everything we run outside the stock CRM** — 12 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → Automations → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
 
 > ⚠️ **The three pipeline engines and the Claude MCP connector were retired 2026-08-07** — see §10. The container `nobridge-sales-engine` still exists but now runs **only** Call Intelligence.
 
@@ -137,7 +137,7 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 | `finance/_artifact/finance-image.tar.gz` | 158 MB pre-built Finance image (Jun 10 — likely stale). |
 
 ### `.crm-automations/` — automation registry + ops dashboard source · LIVE ⚠️
-- `registry.json` — **mirror** of the live registry at `/opt/heydeal-automation-registry/registry.json` on the VM (15 entries), which is what drives the dashboard's System tab. The VM copy is canonical; refresh this one after changing it.
+- `registry.json` — **mirror** of the live registry at `/opt/heydeal-automation-registry/registry.json` on the VM (12 entries), which is what drives the dashboard's Automations tab. The VM copy is canonical; refresh this one after changing it.
 - `registry_sync.py` + `*.service`/`*.timer` — **HISTORICAL.** The 5-min sync that pushed the registry into the CRM's "External Workflows" object; retired 2026-07-04 along with that object. The registry has been hand-maintained since, which is why it had drifted to 6 entries while 15 things were running.
 - `dashboard/automation_docs.py` — **the plain-language documentation for everything we run outside the stock CRM**, rendered as the "How it works" tab on each System card: what it does, a flow diagram, what it reads and writes, how to tell when it has broken, and where the source and logs live. 11 automations with diagrams + 5 always-on services (16 total), plus a list of the 7 retired ones. **Anything registered needs an entry here under the same key** — `/api/docs` reports both cards with no docs and docs for cards that no longer exist, so drift in either direction is visible.
 - `clienttype-sync/` — **source of the Company↔board sync** (VM: `/opt/heydeal-clienttype-sync/sync.py`, 2-min timer, shows as "Look-Up Integration" in the CRM). Tagging a company auto-creates its deal on the matching board; **deleting a deal from a board removes that tag from the company within ~2 min (Rule D, added 2026-07-21) so deletes stick** — re-tag >15 min later to re-create. Deploy = `scp sync.py` to the VM path.
