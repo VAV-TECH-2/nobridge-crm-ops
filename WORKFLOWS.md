@@ -167,6 +167,28 @@ handling.
 
 ---
 
+## The closed loop (intended — never automated)
+
+The pipeline is meant to be **closed**: a deal that dies is not dropped, it goes back to the
+original contact and gets a fresh check-in after about **90 days**. If they bite, it rejoins the
+normal chase ladder as a live deal.
+
+**The engine never did this.** On buy-side, `D02` cancelled every open task and pending job and
+stopped there. On sell-side, exhausting the ladder set `CRASH_OUT_DNC` and stopped. The 90-day
+re-engage that *did* run (`C01`) was only ever reached from a lead **going quiet** — chase ladder
+exhausted → dormant → re-engage — never from a deal marked Lost.
+
+| Pipeline | Closed loop? | Where it rejoins |
+|---|---|---|
+| Buy-side | Yes | Lost → 90 days → re-engage → back onto the `B01` chase ladder |
+| Sell-side | Yes | Do-not-contact → 90 days → re-engage → back onto the cadence |
+| Fulfillment | **No, deliberately** | Delivery work for an existing client, not a prospect to re-approach |
+
+On the dashboard's flowcharts this loop is drawn in **violet and dashed**, keyed as
+*Intended — never automated*, so it is never confused with what the engine actually ran.
+
+---
+
 ## Status buckets
 
 The engine projected every tracked record into one of eight buckets. These drove the (now removed)
