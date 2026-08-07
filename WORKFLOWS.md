@@ -11,6 +11,10 @@
 >
 > The rules below are transcribed from the engine source, which is preserved (dormant) at
 > `Desktop/Nobridge Software/Sales Engine VM`. Nothing here contains customer data.
+>
+> **Prefer a picture?** Each of the three pipelines is also drawn as a flowchart — every play,
+> decision, chase loop and re-engage cycle, start to end. On the ops dashboard:
+> **node.nobridge.co → Workflows → Show chart**. Source: `.crm-automations/dashboard/workflow_charts.py`.
 
 ---
 
