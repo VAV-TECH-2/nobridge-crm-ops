@@ -11,7 +11,9 @@ This is an **operations workspace**, not one app. It holds the CRM frontend sour
 
 The VM key (`~/.ssh/id_rsa`), the Sales Engine (`Desktop\Sales Engine VM`), and the Finance app source (`Desktop\Nobridge Finance\nobridge-finance`) are **outside this folder** — see README §7.
 
-> **Retired 2026-08-07 — do not resurrect without being asked.** The buy-side / sell-side / fulfillment rules engines and the Claude MCP connector are gone (README §10). The `nobridge-sales-engine` container now runs **only** Call Intelligence. Their code is still in `Desktop\Sales Engine VM` but is dormant and its state tables were wiped — `PIPELINE_ENGINES_ENABLED` is a tombstone, not a switch. The rules live on in [`WORKFLOWS.md`](./WORKFLOWS.md).
+> **Retired 2026-08-07 — do not resurrect without being asked.** The buy-side / sell-side / fulfillment rules **engines** and the Claude MCP connector are gone (README §10). The `nobridge-sales-engine` container now runs **only** Call Intelligence. Their code is still in `Desktop\Sales Engine VM` but is dormant and its state tables were wiped — `PIPELINE_ENGINES_ENABLED` is a tombstone, not a switch.
+>
+> The **rules** are not retired — they are how the pipeline is worked by hand, and since 2026-08-08 they are written down as an operating manual in [`WORKFLOWS.md`](./WORKFLOWS.md): every step bound to the exact CRM board, field and option it reads and writes. Treat that file as the source of truth for what a `Stage`, `Progress Type` or `Final Decision` value means, and keep it in step with the live schema — nothing checks it automatically. The same content is rendered in-product on **node.nobridge.co → Workflows** (`.crm-automations/dashboard/dashboard.py` `CATALOG` + `workflow_charts.py`); change one and change the other.
 
 ## Team & cross-OS context (Mac + Windows teammates)
 This folder is **three git repos in one tree** — never `git add` across their boundaries:
