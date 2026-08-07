@@ -38,22 +38,39 @@ crm.nobridge.co {
 # Caddy gating on purpose.
 fin.nobridge.co {
     encode zstd gzip
-    reverse_proxy 127.0.0.1:3100
+
+    # Claude connector fix (2026-07-28). Adding fin.nobridge.co/mcp/<token> as a
+    # custom connector failed with "Couldn't register with Nobridge Finance's
+    # sign-in service". Cause: the MCP client probes OAuth discovery + dynamic
+    # client registration (RFC 7591/8414) BEFORE connecting. Those paths don't
+    # exist in the app, but Next's middleware (no matcher, runs on every request)
+    # 307s them to /login, which answers 200 text/html — so the client believed an
+    # OAuth server was there and choked parsing the HTML as JSON. Returning a bare
+    # 404 tells it "no OAuth here", and it falls back to the URL-path token the
+    # /mcp/:token route actually uses. node.nobridge.co never hit this because its
+    # equivalent probe ends in 501, not 200.
+    # None of these are real app routes (verified against app/ — no register,
+    # authorize, token or .well-known handlers), so nothing is being shadowed.
+    @oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openid-configuration* /register
+    handle @oauth_probe {
+        respond 404
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:3100
+    }
 }
 
-# Nobridge Automations — ops dashboard + ops MCP connector.
+# Nobridge Automations — ops dashboard.
 node.nobridge.co {
     encode zstd gzip
 
-    # Ops MCP connector for claude.ai custom connectors — the sales-engine's
-    # streamable-HTTP endpoint. Auth is the secret token in the URL path,
-    # enforced by the engine itself; NO basic_auth on this path (Claude cannot
-    # send Basic credentials). The engine port is loopback-only on the host.
+    # The ops MCP connector was REMOVED 2026-08-07 with the pipeline engines. Old
+    # /mcp/<token> connector URLs are dead — answer 404 rather than falling through
+    # to the dashboard, which would serve its HTML login page and make a stale
+    # Claude connector fail with a confusing sign-in error instead of a clean 404.
     handle /mcp/* {
-        request_body {
-            max_size 1MB
-        }
-        reverse_proxy 127.0.0.1:8080
+        respond 404
     }
 
     # Ops dashboard — the app performs its own Google sign-in + CRM-role session

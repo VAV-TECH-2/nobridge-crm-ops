@@ -9,12 +9,14 @@ This is an **operations workspace**, not one app. It holds the CRM frontend sour
 2. **Many scripts here mutate production.** Before running one, find it in the README's Directory Guide and confirm it's LIVE vs HISTORICAL vs a `_`-prefixed scratch file. Prefer the idempotent setup scripts; treat `import_*`/`migrate_*`/`vm-rollback.sh` as dangerous.
 3. **Secrets live here:** `.crm-sales-engine/engine_twenty_token.txt` (live API JWT) and `_archive/*.{zip,tgz}` (plaintext old creds). Treat the whole folder as sensitive; never paste secrets into chat, commits, or shared locations.
 
-The VM key (`~/.ssh/id_rsa`), the running Sales Engine (`Desktop\sales-engine-vm`), and the Finance app source (`Desktop\Nobridge Finance\nobridge-finance`) are **outside this folder** — see README §7.
+The VM key (`~/.ssh/id_rsa`), the Sales Engine (`Desktop\Sales Engine VM`), and the Finance app source (`Desktop\Nobridge Finance\nobridge-finance`) are **outside this folder** — see README §7.
+
+> **Retired 2026-08-07 — do not resurrect without being asked.** The buy-side / sell-side / fulfillment rules engines and the Claude MCP connector are gone (README §10). The `nobridge-sales-engine` container now runs **only** Call Intelligence. Their code is still in `Desktop\Sales Engine VM` but is dormant and its state tables were wiped — `PIPELINE_ENGINES_ENABLED` is a tombstone, not a switch. The rules live on in [`WORKFLOWS.md`](./WORKFLOWS.md).
 
 ## Team & cross-OS context (Mac + Windows teammates)
 This folder is **three git repos in one tree** — never `git add` across their boundaries:
 - Root = `VAV-TECH-2/nobridge-crm-ops` (**public**), remote `origin`.
-- `twenty/` = `VAV-TECH-2/CRM` (public), canonical remote **`vt2`**, prod branch `ui/icon-box-sizing`. Ignored by the root repo.
+- `twenty/` = `VAV-TECH-2/CRM` (public), canonical remote **`vt2`**, prod branch `ui/icon-box-sizing`. Ignored by the root repo. (As of 2026-07-27 `origin` also points at `VAV-TECH-2/CRM` — the old `VAV-Technologies` org is retired.)
 - `.crm-automations/dashboard/` = `VAV-TECH-2/nobridge-ops-dashboard` (private), remote `origin`. Ignored by the root repo.
 
 Rules for every agent on every OS:

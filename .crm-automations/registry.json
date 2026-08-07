@@ -1,32 +1,5 @@
 [
   {
-    "key": "sales-engine",
-    "name": "Buyer Deals \u2014 Automatic Next Steps",
-    "container": "nobridge-sales-engine",
-    "scriptPath": "/home/azureuser/sales-engine/src/index.ts",
-    "schedule": "Continuous (reconciles the CRM every 5 min; reminders fire 09:00-18:00 Jakarta)",
-    "description": "Watches every deal on the buyer boards and opens the next task you owe \u2014 chase the reply, book the call, send the paperwork \u2014 so nothing quietly goes cold.",
-    "recordId": "c04ea32f-205c-43ea-8814-e24448699f2d"
-  },
-  {
-    "key": "saley-engine",
-    "name": "Seller Deals \u2014 Automatic Next Steps",
-    "container": "nobridge-sales-engine",
-    "scriptPath": "/home/azureuser/sales-engine/src/automations/sellRegistry.ts",
-    "schedule": "Continuous (reconciles sell deals every 5 min; reminders 09:00-18:00 Jakarta)",
-    "description": "The same thing for the seller side: watches each seller deal and opens the next task when it falls due.",
-    "recordId": null
-  },
-  {
-    "key": "fulfillment-engine",
-    "name": "Fulfillment \u2014 Automatic Next Steps",
-    "container": "nobridge-sales-engine",
-    "scriptPath": "/home/azureuser/sales-engine/src/automations/fulfillmentRegistry.ts",
-    "schedule": "Continuous (reconciles fulfillment every 5 min; reminders 09:00-18:00 Jakarta)",
-    "description": "The same thing again for fulfillment records: keeps prospects moving through the stages by opening the next task at the right moment.",
-    "recordId": null
-  },
-  {
     "key": "blocklist-guard",
     "name": "Cold-Email Sender Blocker",
     "unit": "blocklist-guard",
@@ -37,7 +10,7 @@
   },
   {
     "key": "clienttype-sync",
-    "name": "Company Tag \u2192 Deal Board",
+    "name": "Company Tag → Deal Board",
     "unit": "clienttype-sync",
     "scriptPath": "/opt/heydeal-clienttype-sync/sync.py",
     "schedule": "Every 2 minutes",
@@ -54,7 +27,7 @@
   },
   {
     "key": "twenty-backup",
-    "name": "CRM Backup \u2014 Nightly",
+    "name": "CRM Backup — Nightly",
     "watchPath": "/var/backups/twenty/db-*.sql.gz",
     "maxAgeHours": 30,
     "minBytes": 1000000,
@@ -65,7 +38,7 @@
   },
   {
     "key": "last-contacted-refresh",
-    "name": "\u201cLast Contacted\u201d Updater",
+    "name": "“Last Contacted” Updater",
     "watchPath": [
       "/home/azureuser/last-contacted.log",
       "/home/azureuser/last-contacted-fulfillment.log"
@@ -73,7 +46,7 @@
     "maxAgeHours": 30,
     "scriptPath": "/home/azureuser/refresh-last-contacted.sql",
     "schedule": "Nightly 06:30 and 06:35",
-    "description": "Every morning it works out when you last exchanged email with each company and writes it onto the deal in plain words \u2014 today, 3 days ago, no contact logged. It only runs overnight, so today's emails show up tomorrow.",
+    "description": "Every morning it works out when you last exchanged email with each company and writes it onto the deal in plain words — today, 3 days ago, no contact logged. It only runs overnight, so today's emails show up tomorrow.",
     "recordId": null
   },
   {
@@ -87,7 +60,7 @@
   },
   {
     "key": "finance-db-backup",
-    "name": "Finance Backup \u2014 Nightly",
+    "name": "Finance Backup — Nightly",
     "unit": "finance-db-backup",
     "scriptPath": "/home/azureuser/finance/backup-finance-db.sh",
     "schedule": "Nightly 03:30",
@@ -104,14 +77,6 @@
     "recordId": null
   },
   {
-    "key": "ops-mcp",
-    "name": "Claude's Access to the CRM",
-    "container": "nobridge-sales-engine",
-    "schedule": "Always on",
-    "description": "The link that lets Claude read and write your CRM in conversation \u2014 ask about deals, read an email thread, update a record. It runs inside the automation engine, so if the engine is down this is too.",
-    "recordId": null
-  },
-  {
     "key": "nobridge-finance",
     "name": "Finance App",
     "container": "nobridge-finance",
@@ -124,7 +89,7 @@
     "name": "Web Traffic Router",
     "unit": "caddy",
     "schedule": "Always on",
-    "description": "Points each web address at the right application and handles the padlock on the browser bar. Everything public depends on it \u2014 if this stops, all three sites go down together.",
+    "description": "Points each web address at the right application and handles the padlock on the browser bar. Everything public depends on it — if this stops, all three sites go down together.",
     "recordId": null
   },
   {
@@ -132,7 +97,7 @@
     "name": "CRM Custom Look",
     "container": "twenty-server-1",
     "schedule": "Always on",
-    "description": "Our branding and layout fixes painted over the standard CRM \u2014 the logo, the workspace switcher, the link across to Finance. Appearance only; the CRM underneath is the untouched official product.",
+    "description": "Our branding and layout fixes painted over the standard CRM — the logo, the workspace switcher, the link across to Finance. Appearance only; the CRM underneath is the untouched official product.",
     "recordId": null
   },
   {

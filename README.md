@@ -16,7 +16,7 @@ Three live web properties make up the Nobridge system, all hosted on **one Azure
 |---|---|---|
 | **CRM** | `crm.nobridge.co` | Self-hosted [Twenty CRM](https://twenty.com) v2.7.3 (stock Docker image + a custom frontend bundle overlaid on top). The core system. |
 | **Finance** | `fin.nobridge.co` | "Nobridge Finance" — a separate Next.js app (cost/income submission → approvals → payment tracking + analytics). Fully isolated from the CRM. |
-| **Ops / MCP** | `node.nobridge.co` | A read-only ops dashboard + an MCP connector (lead-status DB) the team adds to Claude. The dashboard uses Google sign-in (CRM Admin/Manager only), like Finance; the `/mcp/*` connector is token-in-URL (no login). |
+| **Ops** | `node.nobridge.co` | A read-only ops dashboard (Calls, Team usage, Workflows, System). Google sign-in, CRM Admin/Manager only, like Finance. The `/mcp/*` Claude connector that used to live here was **retired 2026-08-07** and now returns 404. |
 
 This folder contains, for those properties:
 - **`twenty/`** — the CRM frontend source (a fork-branch of the Twenty monorepo; only the frontend is customized).
@@ -37,14 +37,17 @@ This folder contains, for those properties:
                     │   Caddy (TLS +     │   /etc/caddy/Caddyfile
                     │   reverse proxy)   │   (source: deploy/Caddyfile.nobridge-final)
                     └─────────┬──────────┘
-        ┌─────────────────────┼───────────────────────┬────────────────┐
-        │                     │                        │                │
- crm.nobridge.co       fin.nobridge.co          node.nobridge.co   node.nobridge.co
-        │                     │                        │              /mcp/*
-        ▼                     ▼                        ▼                ▼
-   127.0.0.1:3000       127.0.0.1:3100          127.0.0.1:3200    127.0.0.1:8080
-   Twenty server        Nobridge Finance         Ops dashboard    MCP connector
-        │               (Next.js)                (dashboard.py)   (lead-status DB)
+        ┌─────────────────────┼────────────────────────┐
+        │                     │                        │
+ crm.nobridge.co       fin.nobridge.co          node.nobridge.co
+        │                     │                        │
+        ▼                     ▼                        ▼
+   127.0.0.1:3000       127.0.0.1:3100          127.0.0.1:3200
+   Twenty server        Nobridge Finance         Ops dashboard
+        │               (Next.js)                (dashboard.py)
+        │                                        (127.0.0.1:8080 = the sales-engine
+        │                                         container: call intelligence only,
+        │                                         loopback, no longer proxied)
         │                     │
    ┌────┴─────┬──────────┐    └── finance-db (Postgres 17, own compose project
    │          │          │        "nobridge-finance", isolated network)
@@ -58,15 +61,13 @@ This folder contains, for those properties:
 
 **Containers** (via `sudo docker ps` on the VM): `twenty-server-1`, `twenty-worker-1`, `twenty-db-1` (Postgres 16), a Redis container, plus the isolated `nobridge-finance` project (app + `finance-db` Postgres 17).
 
-**Everything we run outside the stock CRM** — 16 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
+**Everything we run outside the stock CRM** — 12 jobs and services, all of them documented in plain language with flow diagrams at **node.nobridge.co → System → (any card) → How it works**. That tab is the source of truth for *how* each one works; the table below is just the inventory and where each is triggered from.
+
+> ⚠️ **The three pipeline engines and the Claude MCP connector were retired 2026-08-07** — see §10. The container `nobridge-sales-engine` still exists but now runs **only** Call Intelligence.
 
 | What | Trigger | Cadence | Purpose |
 |---|---|---|---|
-| Buy-side engine | container `nobridge-sales-engine` | tick | Opens the next task owed on each buy-side deal. Source: `Desktop/sales-engine-vm` (**not** this folder). |
-| Sell-side engine | same container | tick | Same, for sell-side. |
-| Fulfillment engine | same container | tick | Same, for fulfillment records. |
-| Call intelligence | same container | every 15 min | Reads Gemini call notes from Meet, files a note + action items on the right records. |
-| Claude connector (ops MCP) | same container | always on | Lets Claude read/write the CRM in conversation. |
+| Call intelligence | container `nobridge-sales-engine` | every 15 min | Reads Gemini call notes from Meet, files a note + action items on the right records. **The only thing left in that container.** |
 | Client Type sync | timer `clienttype-sync` | every 2 min | Mirrors `Company.clientType` → the 5 split opportunity boards. |
 | `blocklist-guard` | timer | every 2 min | Enforces the cold-email sending-domain blocklist: mirrors the admin's blocklist (Settings → Accounts → Blocklist, vilca@nobridge.co = master list) to every member and soft-deletes Companies/People auto-created from blocked `@domain`s (skips records attached to real deals/notes; ids logged to `swept.json`). Source: `.crm-automations/blocklist-guard/`. |
 | Gmail draft cleanup | timer `crm-draft-cleanup` | hourly | Soft-deletes the phantom "sent" messages Twenty's sync creates on every draft autosave. |
@@ -81,7 +82,7 @@ This folder contains, for those properties:
 
 **Build pipelines (GitHub Actions, not scheduled — they run when someone pushes or dispatches):** `UI Build` in `VAV-TECH-2/CRM` produces the frontend overlay bundle; `build-image` in `VAV-TECH-2/nobridge-finance` produces the Finance image. Neither rebuilds anything on the server by itself — the artifact still has to be copied across, so the live site can lag the code.
 
-⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, **Google Chat notifications** (removed 2026-08-06 — the engines create CRM tasks and nothing else), and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
+⚠️ **crontab is the easy one to miss.** Three cron lines — the CRM backup plus the two last-contacted refreshes — live in **azureuser's** crontab (`crontab -l`, *not* `sudo crontab -l`, which is empty) and appear in no systemd listing. `systemctl list-timers` alone will tell you the CRM backup doesn't exist. Retired and no longer running: **the buy-side / sell-side / fulfillment engines and the Claude MCP connector (2026-08-07)**, `automation-registry-sync`, the Venice/Henry/Saley AI agents, the sales digest, Google Tasks, Google Chat notifications, and the heydeal.co domain (the dashboard lists these too, so their absence is explained rather than mysterious).
 
 **Domain note:** `heydeal.co` was the original domain and was **fully retired 2026-07-05** (no redirects; all old links dead). Any `heydeal.co` reference in a script here is **stale** — the live host is `crm.nobridge.co`.
 
@@ -151,7 +152,7 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 - `_*.py` (e.g. `_introspect_*`, `_views*`, `_wh*`) — scratch/debug utilities; not part of any pipeline.
 
 ### `.crm-sales-engine/` — sales-engine SETUP tooling · MIXED ⚠️
-> This is **not** the running Sales Engine — that is `Desktop\sales-engine-vm`. This folder holds the one-time setup/migration scripts and prototypes.
+> This is **not** the running Sales Engine — that is `Desktop\Sales Engine VM`. This folder holds the one-time setup/migration scripts and prototypes. The pipeline engines it was built for were retired 2026-08-07; these scripts are now historical apart from the ones flagged LIVE below.
 - `setup_fields_se.py`, `migrate_stages.py` + `stage_migration_manifest.json`, `finalize_stages.py`, `rollback_stages.py` — the 4→8 stage pipeline migration (HISTORICAL).
 - `register_webhook.py` / `delete_webhook.py`, `probe*.py`, `test_*.py` — webhook + query tooling.
 - `cleanup_draft_messages.py` — **LIVE** ⚠️ mutates prod. Twenty v2.7.3's incremental Gmail sync (`history.list`) can't exclude drafts, so reply drafts get imported as OUTGOING "sent" messages (one per autosave). This script cross-checks every OUTGOING message against Gmail (DRAFT label or 404 = ghost) and soft-deletes the ghosts, manifest at VM `~/crm-draft-cleanup/cleaned.json`. Dry-run by default; `--apply` to delete. **Must run ON the VM** (it shells into the docker containers locally). Deployed at `/opt/crm-draft-cleanup/`, swept hourly by `crm-draft-cleanup.timer` (units in `deploy/draft-cleanup/`).
@@ -190,7 +191,7 @@ Retired AI agents (Venice / Henry / Saley) + old sales-engine TypeScript source,
 | `APP_SECRET` | Twenty JWT signing | VM `/home/azureuser/twenty/.env` (also `docker exec twenty-server-1 printenv APP_SECRET`) |
 | `PG_DATABASE_PASSWORD` | Twenty Postgres | VM `/home/azureuser/twenty/.env` |
 | `AUTH_GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth (CRM+Finance login, Gmail/Calendar sync) | VM `/home/azureuser/twenty/.env` — ⚠️ **must be mirrored into the worker service** or Gmail sync silently fails |
-| **4 MCP scope tokens** + inbound `TWENTY_WEBHOOK_SECRET` | MCP connectors, Twenty→engine webhook HMAC | VM sales-engine `.env` |
+| ~~4 MCP scope tokens + `TWENTY_WEBHOOK_SECRET`~~ | **Removed 2026-08-07** with the connector and the engines — no longer in the sales-engine `.env`. | — |
 | Finance DB password + agent API token | Finance Postgres, Finance agent/MCP | VM `.env.finance` (nobridge-finance compose project) |
 | **`engine_twenty_token.txt`** | Long-lived Twenty API JWT | 🗂️ **In this folder:** `.crm-sales-engine/engine_twenty_token.txt` |
 | Old agent creds (Twenty JWT, PG pw, webhooks, Azure key) | mostly retired | 🗂️ **In this folder:** `_archive/ai-agents-*.{zip,tgz}` (plaintext) |
@@ -205,7 +206,7 @@ Cloning `nobridge-crm-ops` (plus the two nested repos via `scripts/setup.sh`) gi
 
 | Item | Location | Why it matters |
 |---|---|---|
-| **Sales Engine (running code)** | `Desktop\Sales Engine VM` | The canonical, deployed Twenty→Tasks automation. `.crm-sales-engine/` here is only its *setup* scripts. |
+| **Sales Engine (running code)** | `Desktop\Sales Engine VM` | Now runs **call intelligence only** — the buy/sell/fulfillment engines were retired 2026-08-07 and their code is dormant (kept as the record of the rules; see [`WORKFLOWS.md`](./WORKFLOWS.md)). `.crm-sales-engine/` here is only its *setup* scripts. |
 | **Finance app source** | `Desktop\Nobridge Finance\nobridge-finance` | The `fin.nobridge.co` app. This folder only has its *deploy* scripts (`deploy/finance/`). |
 | **VM SSH key** | `~/.ssh/id_rsa` | The **only** way to reach the VM. Without it nothing here works. |
 | **User CLI rules** | `~/CLAUDE.md` | Your global "use the CLI, don't kill processes" instructions for Claude. |
@@ -270,6 +271,7 @@ Setup checklist (details in ONBOARDING.md):
 
 ## 10. History / glossary (so old references don't mislead)
 
+- **2026-08-07** — **the buy-side, sell-side and fulfillment rules engines were retired**, along with the Claude MCP connector. They matched on stage + timestamps with no understanding of the conversation, so the tasks they raised were noise. What changed: the three engines no longer start (their code stays in `Desktop\Sales Engine VM`, dormant, as the record of the rules); the engine's state DB was archived then wiped; **440 engine-created tasks were deleted from the CRM**; the dashboard lost its Overview, Pipeline and Access tabs; `node.nobridge.co/mcp/*` returns 404 and the 4 scope tokens are gone. **No CRM data was touched** — every deal, board, company, contact, note and tag is exactly as it was, including the `escalatedAt` / `GHOSTED` / `HELD_OFF` values the engines had written. The rules are preserved in [`WORKFLOWS.md`](./WORKFLOWS.md) and on the dashboard's Workflows tab. Retirement backups (CRM dump, engine DB, JSON exports, configs) live **outside this repo** at `Desktop/Nobridge Software/_backups/20260807-preremoval/` and on the VM at `~/_archive/20260807-preremoval/`.
 - **2026-07-06** — `node.nobridge.co` ops dashboard moved off Caddy basic-auth to app-level Google sign-in + CRM role check (Admin/Manager only), mirroring Finance; the shared OAuth client gained a `node.nobridge.co/api/auth/google/callback` redirect URI.
 - **2026-07-05** — `heydeal.co` fully retired → `crm/fin/node.nobridge.co`. One OAuth client now serves CRM + Finance + the node dashboard. All old `heydeal.co` links are dead.
 - **2026-07-04** — AI agents (Venice / Henry / Saley) and the `gpt-5.4` deployment removed; backups in `_archive/`.
