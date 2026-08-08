@@ -15,9 +15,14 @@
 > done by hand. The rules are still the rules — a human following them and a machine enforcing them
 > should produce the same record.
 >
-> **Prefer a picture?** All three pipelines are drawn as flowcharts on the ops dashboard:
-> **node.nobridge.co → Workflows**, with the step-by-step list behind **Show details**.
-> Source: `.crm-automations/dashboard/workflow_charts.py` and `dashboard.py` (`CATALOG`).
+> **Prefer a picture?** All three pipelines are drawn as flowcharts on the ops dashboard, at two
+> altitudes. **node.nobridge.co → High Level Workflows** is the shape of a pipeline on one screen,
+> with the step list behind **Show details**. **→ Workflow** is the same rules with nothing
+> collapsed: every send, every timer, every reply check and every field write as its own node —
+> where the summary draws one box for a chase ladder, that one draws *wait 4 days → send chase 2
+> of 4 → replied?*. Source: `.crm-automations/dashboard/workflow_charts.py`, `workflow_detail.py`
+> and `dashboard.py` (`CATALOG`). All of them are hand-maintained renderings of §3–5 below —
+> this document is the original, and nothing checks that the copies still agree with it.
 
 ---
 
@@ -252,6 +257,10 @@ and calendar-based; every touch lands inside business hours, **09:00–18:00 Asi
 **When a ladder exhausts:** `progressType = Ghosted`, and the next re-engage date is recorded. The
 deal is not closed — it is parked, and C01 picks it back up.
 
+> The **Workflow** tab draws every one of these touches individually — the wait, the send and the
+> "did they reply" check between each pair — and it derives them from this table. Change a day
+> offset here and `workflow_detail.py` is wrong until someone changes it too.
+
 ### 3.3 Interrupts
 
 | ID | Interrupt | Trigger | Effect |
@@ -290,6 +299,9 @@ Each step fires only if there has been no reply since the previous touch. Busine
 
 Every step writes `nextReachOutAt` = the next touch's date. That field is the only forward-looking
 one on the board and is what makes "waiting on them" a filterable state rather than a feeling.
+
+> This table is what the **Workflow** tab draws touch by touch, one wait node and one reply check
+> per row above. Edit the delays here and `workflow_detail.py`'s `SELL_CADENCE` needs the same edit.
 
 > **Those marks are gone.** The cadence used to write `Ghosted` onto 16 deals and `Held Off` onto 5
 > — machine output that read like someone's judgement. All of them were cleared in the 2026-08-07
@@ -338,6 +350,9 @@ One ladder, cumulative days **2 · 4 · 8 · 12 · 26** from the last touch, bus
 Runs **at most twice**: the initial cycle, then — if still silent — a **+14-day** re-engagement that
 repeats the same ladder once. After the second cycle, chasing stops and the record is handed back
 for a human decision. `followUpDate` carries the next touch; `daysSinceContact` shows the drift.
+
+> The **Workflow** tab draws both cycles in full, five touches each, from these offsets — and
+> draws §5.1's seven stages as seven nodes rather than the single box the summary chart uses.
 
 ### 5.3 Interrupts
 
