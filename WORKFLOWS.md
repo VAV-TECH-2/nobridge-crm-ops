@@ -1,542 +1,2286 @@
 # Nobridge pipeline workflows — the operating manual
 
-> **What this is.** One written model for how a deal moves through Nobridge, bound to the exact
-> fields on the exact CRM boards. Every step below names the CRM state that triggers it and the CRM
-> writes it produces, so "where is this deal" has one answer no matter who you ask.
+> **GENERATED FILE — do not edit.** Written by `.crm-automations/dashboard/workflow_doc.py` from `workflow_spec.py`:
 >
-> **Why it exists.** Until August 2026 there were two systems. A rules engine kept its own state
-> machine in a private database — sub-states like `NEW_LEAD:AWAITING_OUTREACH` and `DORMANT:HELD_OFF`
-> — and fired tasks off it. Meanwhile people filled in `Stage`, `Progress Type` and `Final Decision`
-> in the CRM by hand, with no defined relationship between them. Neither knew what the other meant.
-> The engine was switched off on 2026-08-07 (§10). This document is the merge: the engine's rules,
-> re-expressed entirely in fields that are visible on the record.
+> ```sh
+> cd .crm-automations/dashboard && python3 workflow_doc.py > ../../WORKFLOWS.md
+> ```
 >
-> **Status of the automation.** Only **Call Intelligence** runs today (§8). Everything else here is
-> done by hand. The rules are still the rules — a human following them and a machine enforcing them
-> should produce the same record.
->
-> **Prefer a picture?** All three pipelines are drawn as flowcharts on the ops dashboard, at two
-> altitudes. **node.nobridge.co → High Level Workflows** is the shape of a pipeline on one screen,
-> with the step list behind **Show details**. **→ Workflow** is the same rules with nothing
-> collapsed: every send, every timer, every reply check and every field write as its own node —
-> where the summary draws one box for a chase ladder, that one draws *wait 4 days → send chase 2
-> of 4 → replied?*. Source: `.crm-automations/dashboard/workflow_charts.py`, `workflow_detail.py`
-> and `dashboard.py` (`CATALOG`). All of them are hand-maintained renderings of §3–5 below —
-> this document is the original, and nothing checks that the copies still agree with it.
+> Edit the spec and regenerate. Until 2026-08-09 this document, the two chart tabs and the dashboard's step list were four hand-kept copies of one ruleset, and this file had to warn you twice that nothing checked they agreed. They are now one source.
+
+> ## ⚠ The CRM has not been migrated yet.
+
+> The boards still carry the old six stages. Several stages named below — **Qualified**, **Negotiation**, **Target**, **Engaged**, **Offer Expected** — do not exist on any board today, and the fields marked NEW are not there either. What is actually live is preserved at [`_archive/WORKFLOWS-pre-v2.md`](./_archive/WORKFLOWS-pre-v2.md) and stays true until `.crm-migrate-v2` is applied. Use that file to work a deal today; use this one to understand where the pipeline is going.
+
+> **What is changing, in plain language:** [`MIGRATION.md`](./MIGRATION.md) — which stages move, where every deal lands, and what to do differently. The runbook for whoever applies it is [`.crm-migrate-v2/RUNBOOK.md`](./.crm-migrate-v2/RUNBOOK.md).
+
+Three pipelines redrawn: stages split where one stage was doing two jobs, a Negotiation stage where today there is nothing between the pitch and the close, and every chase written as a named loop with its parameters on the face of it.
 
 ---
 
-## 1. How to read a deal — the four axes
+## 1. Why the stages move
 
-A deal's status is not one field. It is four independent questions, and each has exactly one field
-that answers it. Most of the confusion in the CRM today comes from answering one question with
-another field's value.
+Buy's Stage 1 currently means both “a lead arrived” and “we are chasing a lead”. Those need different work and different reporting, and conflating them is why 40 deals sit there with a verdict typed on them as a status.
 
-| Axis | The question | Field | Set by | Rolls back? |
-|---|---|---|---|---|
-| **Position** | How far did this conversation get? | `stage` | Evidence of a step actually taken | **Never.** It freezes at the furthest point reached |
-| **Pulse** | Is it alive *right now*? | `progressType` | The clock — did they reply, or has it gone quiet | Constantly |
-| **Meeting** | What happened to the booked meeting? | `meetingOutcome` | Calendar sync, then the call note | Per meeting |
-| **Verdict** | Is it over, and how? | `finalDecision` · `outcome` on Fulfillment | A person, once, at the end | No — terminal |
+Nothing at all sits between Pitch and Closed — no terms, no paperwork, no signature. That is where an advisory deal spends its last six weeks, and the board cannot see any of it.
 
-And underneath them, **the clock** — the timestamps that make Pulse derivable instead of guessed:
-`outreachSentAt` · `repliedAt` · `strategySentAt` · `revampSentAt` · `recapSentAt` ·
-`escalatedAt` · `nextReachOutAt` (Sell) · `followUpDate` + `lastContact` (Fulfillment).
-
-### The three rules that follow from this
-
-**Position never reverses.** A deal that reached Stage 6 and then died stays at Stage 6. The board
-is a record of how far you got, not a to-do list. This is already how the data is filled in — 32 of
-the 35 sell deals sit at Stage 6 while being closed — so this rule makes the existing convention
-official rather than moving anything.
-
-**Pulse is derived, not typed.** It answers only "is this conversation warm":
-
-| Value | Means | Condition |
-|---|---|---|
-| `Actively Speaking / In Chase` | Live | Outreach sent **and** (they replied within 14 days **or** a future reach-out is scheduled) |
-| `Ghosted` | Gone quiet | 14 calendar days of silence after the last outbound touch, chase ladder exhausted |
-| `Complete` | Done with | A verdict is set |
-
-**Blank verdict means open.** `finalDecision` stays empty for the entire life of a live deal. It is
-filled in once, at the end. `No Decision Made` is *not* "we haven't decided yet" — it means the deal
-ran its course and the other side never came back with an answer. That is terminal.
-
-> **Known backlog.** 40 of 99 buy deals currently carry `No Decision Made` while sitting in Stage 1
-> or Stage 2 — using the verdict field as a live status. Those need reconciling to blank, or to a
-> real verdict. Tracked as the Phase 4 backfill; not corrected by this document.
+A chase ladder is currently twelve anonymous nodes. How many touches it has, what ends it, and where the record goes when it runs out are all implicit — which is how five ladders came to simply stop, with nothing catching what fell out.
 
 ---
 
-## 2. The field dictionary
+## 2. What changes
 
-Five boards. A Company's `Client Type` tag decides which ones it appears on, and
-`.crm-automations/clienttype-sync` creates the record within ~2 minutes of tagging.
-
-| `Company.clientType` | Board | API object | Record count (2026-08-08) | Created at stage |
+| Pipeline | Stages | Steps | New steps | Named loops |
 |---|---|---|---|---|
-| `Buy side` | Buy Side Opportunities | `buyOpportunity` | 99 | `Stage 1 · New Lead` |
-| `Sell side` | Sell Side Opportunities | `sellOpportunity` | 35 | `Stage 1 · New Lead` |
-| `Other opportunities` | Other Opportunities | `otherOpportunity` | 5 | `Stage 1 · New Lead` |
-| `Fulfillment` | Fulfillments | `fulfillment` | 348 | `Reached Out / Teaser` |
-| `Network` | Network | `networking` | 75 | `Reached Out` |
+| Buy-side | 8 → 9 | 24 → 48 | 17 | 10 |
+| Sell-side | 7 → 10 | 25 → 49 | 20 | 11 |
+| Fulfillment | 7 → 9 | 14 → 38 | 14 | 6 |
 
-`Client Type` is a MULTI_SELECT — a company can be on several boards at once. Untagging does **not**
-delete the deal; it only stops the sync from maintaining it.
+---
 
-### 2.1 The opportunity boards — Buy, Sell, Other
+## 3. The loop catalogue
 
-These three were cloned from one object and have since drifted apart. The differences are real and
-matter, so they are listed rather than smoothed over.
+Every chase, re-engagement and SLA as one named object, defined once and used wherever it genuinely is the same loop. **`on exhaust` is the row that does not exist today** — five of the current ladders simply stop, which is where all twenty-four dead ends came from.
 
-**`stage`** — Position. Identical first six on all three boards:
+### L1 · Booking chase (cold)
 
-| Value | Label |
+| Parameter | Value |
 |---|---|
-| `NEW_LEAD` | `Stage 1 · New Lead` |
-| `MEETING_1` | `Stage 2 · Intro Meeting + Screening` |
-| `STRATEGY` | `Stage 3 · Strategy / Value Creation` |
-| `MEETING_2` | `Stage 4 · Strategy Review` |
-| `REVAMPS` | `Stage 5 · Revamps` |
-| `MEETING_3` | `Stage 6 · Service Evaluation + Pitch` |
+| touches | 4 |
+| schedule | day 2 · 6 · 14 · 30 |
+| entry | Outreach Sent At set ∧ no meeting booked |
+| exit | they reply, or a meeting is booked |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → L9 · Ghosted, re-engage date set |
+| escalation | none — the loop is the escalation |
+| used by | buy · sell |
+| today | B01, unchanged |
 
-Then they diverge — **Buy** ends `Completed` / `Skipped`; **Sell** and **Other** end `Closed Won`
-with no equivalent of `Skipped`. There is no `Lost` and no `Dormant` stage on any board, and there
-should not be: both are verdict/pulse states, not positions (§7).
+### L2 · Qualification chase
 
-**`progressType`** — Pulse. Same on all three: `Actively Speaking / In Chase` · `Ghosted` ·
-`Complete`.
+| Parameter | Value |
+|---|---|
+| touches | 3 |
+| schedule | day 1 · 3 · 7 |
+| entry | Stage = Lead ∧ Qualified is empty |
+| exit | qualified, or disqualified |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → Closed · Disqualified — no answer to a screening question is an answer |
+| escalation | day 7 → the owner's manager |
+| used by | buy · sell · fulfillment |
+| today | NEW — nothing screens a lead today |
 
-**`meetingOutcome`** — Meeting. Same on all three: `Scheduled` · `Hosted` · `No-show` ·
-`Rescheduled` · `Cancelled`.
+### L3 · Go-ahead chase
 
-**`finalDecision`** — Verdict. **Buy has seven options; Sell and Other have three.**
+| Parameter | Value |
+|---|---|
+| touches | 4 |
+| schedule | day 2 · 6 · 12 · 20 |
+| entry | Recap Sent At set ∧ the next stage has not been agreed |
+| exit | they agree, or they reply |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → L9, except after the pitch, where it closes as No Decision Made |
+| escalation | none |
+| used by | buy · sell · fulfillment |
+| today | B05, added 8 Aug |
 
-| Option | Buy | Sell | Other |
-|---|:-:|:-:|:-:|
-| `Closed Won` | ✓ | ✓ | ✓ |
-| `Closed Lost` | ✓ | ✓ | ✓ |
-| `No Decision Made` | ✓ | ✓ | ✓ |
-| `Not Interested` | ✓ | — | — |
-| `Disqualified` | ✓ | — | — |
-| `Follow Up (90)` | ✓ | — | — |
-| `Follow Up (180)` | ✓ | — | — |
+### L4 · No-show recovery
 
-`Follow Up (90)` and `Follow Up (180)` are the closed loop written down (§9): closed for now, come
-back in 90 or 180 days.
+| Parameter | Value |
+|---|---|
+| touches | 5 |
+| schedule | immediately, then day 2 · 6 · 14 · 30 |
+| entry | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| exit | the meeting is re-booked |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → L9 |
+| escalation | none |
+| used by | buy · sell · fulfillment |
+| today | B02 + D04, merged |
 
-**`engagementStatus`** — **Sell only.** `In Discussions / Scheduled` · `Awaiting Reply` ·
-`Held Off` · `Crash Out / DNC`. This is a second, overlapping pulse axis that Buy and Other do not
-have, and it is the field the retired sell cadence wrote into. Under the model above it is
-redundant: `Held Off` is `Ghosted` + a future reach-out date, and `Crash Out / DNC` is a verdict.
-Only 3 of 35 sell deals use it. Retiring it is Phase 2 work; until then, `progressType` is
-authoritative and `engagementStatus` is legacy.
+### L5 · Deliverable SLA
 
-**The clock and the rest:**
+| Parameter | Value |
+|---|---|
+| touches | 2 |
+| schedule | at the SLA, then +3 days |
+| entry | In a deliverable stage ∧ its Sent At is empty |
+| exit | the deliverable goes out |
+| on reply | n/a — this one fires on us, not on them |
+| on exhaust | → the owner's manager, and the deal stays put |
+| escalation | Escalated At = now on the first touch |
+| used by | buy · sell |
+| today | NEW — nothing watches our own deadlines |
 
-| Field | Type | Label | On |
-|---|---|---|---|
-| `outreachSentAt` | DATE_TIME | Outreach Sent At | all three |
-| `repliedAt` | DATE_TIME | Replied At | all three |
-| `strategySentAt` | DATE_TIME | Strategy Sent At | all three |
-| `revampSentAt` | DATE_TIME | Revamp Sent At | all three |
-| `recapSentAt` | DATE_TIME | Recap Sent At | all three |
-| `escalatedAt` | DATE_TIME | Escalated At | all three |
-| `nextReachOutAt` | DATE_TIME | Next Reach-Out At | **Sell only** |
-| `closeDate` | DATE_TIME | Close date | all three |
-| `amount` | CURRENCY | Amount | all three |
-| `revampNeeded` | BOOLEAN | Revamp Needed | all three |
-| `nextSteps` | TEXT | **Where we last left off** | all three |
-| `actionItem` | TEXT | Action Item | all three |
-| `reasonForProgress` | TEXT | Reason for progress | all three |
-| `lastContacted` | **TEXT** | Last Contacted | all three |
+### L6 · Booking chase (warm)
 
-> **Two traps in that table.**
-> `lastContacted` is **text**, not a date — it holds phrases like `4 days ago` and
-> `No contact logged`, rewritten nightly at 06:30. You cannot filter or sort a pipeline on it, and a
-> value read at any other moment is stale. Treat it as a glance, never as data.
-> `nextSteps` is labelled **"Where we last left off"** in the UI — it is a *history* note, not a
-> plan. The plan goes in `actionItem`.
+| Parameter | Value |
+|---|---|
+| touches | 4 |
+| schedule | day 2 · 6 · 12 · 20 |
+| entry | A deliverable has gone out ∧ no next meeting is booked |
+| exit | a meeting is booked |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → L9 |
+| escalation | none |
+| used by | buy · sell |
+| today | B03 + B04 — one loop, drawn twice |
 
-> **The clock is currently empty.** All six timestamp fields read 0 of 99 on the buy board: their
-> values were the retired engine's and were cleared on 2026-08-07. The fields still exist. Until
-> they are being written again, Pulse cannot be derived and has to be judged by eye.
+### L7 · Negotiation chase
 
-### 2.2 Fulfillment
+| Parameter | Value |
+|---|---|
+| touches | 4 |
+| schedule | day 3 · 7 · 14 · 21 |
+| entry | Stage = Negotiation ∧ no response since the last send |
+| exit | terms agreed, or a decision |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → Closed · No Decision Made |
+| escalation | day 14 → the owner's manager |
+| used by | buy · sell |
+| today | NEW — there is no Negotiation stage today |
 
-A different process — running a sell-side mandate against a list of approach targets — so a
-different ladder.
+### L8 · Signature chase
 
-**`stage`** — `Reached Out / Teaser` → `Meeting 1` → `NDA` → `Meeting 2` → `Due Diligence` →
-`Meeting 3` → `Waiting on Offer`.
+| Parameter | Value |
+|---|---|
+| touches | 4 |
+| schedule | day 2 · 5 · 10 · 20 |
+| entry | A document is out for signature ∧ unsigned |
+| exit | signed |
+| on reply | owner → Us · due +1 BD |
+| on exhaust | → L9 |
+| escalation | day 10 → the owner's manager |
+| used by | buy · sell · fulfillment |
+| today | NEW — an unsigned NDA is invisible today |
 
-**`engagementStatus`** — Pulse. `Complete` · `Actively Speaking` · `Ghosted`.
+### L9 · Dormant re-engage
 
-> **The naming trap.** In the CRM this field is **labelled "Progress Type"**, but its API name is
-> `engagementStatus` — *not* `progressType`, which is what the opportunity boards use. The options
-> match `progressType` but are listed in a different order. Anything written against
-> `fulfillment.progressType` silently goes nowhere. Renaming it is Phase 2 work.
+| Parameter | Value |
+|---|---|
+| touches | 2 |
+| schedule | +90 days, bump at +97 |
+| entry | Ghosted ∧ the re-engage date has arrived |
+| exit | they reply |
+| on reply | back to the stage it stalled at · owner → Us · due +1 BD |
+| on exhaust | → a verdict. Dormant is not a resting place |
+| escalation | none |
+| used by | buy · sell |
+| today | C01 — exists, but only one of five ladders feeds it |
 
-**`outcome`** — Verdict. `Offer Received` · `Passed` · `Dropped`.
+### L10 · Closed loop
 
-**`prospectType`** — segmentation, not status: `Level 1 : Competitor / Direct Relation` ·
-`Level 2 : Supporting Business` · `Level 3 : Expansion` · `PE / VC`.
+| Parameter | Value |
+|---|---|
+| touches | 2 |
+| schedule | +90 days, then +180 |
+| entry | Final Decision = Follow Up (90) or Follow Up (180) |
+| exit | they reply → the deal rejoins L1 as a live lead |
+| on reply | new deal at Stage 2 · owner → Us · due +1 BD |
+| on exhaust | → terminal. Genuinely finished |
+| escalation | none |
+| used by | buy · sell |
+| today | Designed, never built (WORKFLOWS.md §8) |
 
-**Better instrumented than the opportunity boards** — these are real dates, refreshed nightly at
-06:35: `lastContact` (DATE) · `daysSinceContact` (NUMBER, = today − lastContact) ·
-`followUpDate` (DATE — Fulfillment's name for `nextReachOutAt`). Also `mandate` (which client this
-approach is for), `meetingFindings`, `fathomLink`, `secondaryContacts`, `notes`, `nextSteps`,
-`companyType`, `country`, plus `repliedAt` and `escalatedAt`.
+### L11 · Cold cadence
 
-### 2.3 Network
+| Parameter | Value |
+|---|---|
+| touches | 6 |
+| schedule | +2 BD · +5 BD · +14 d · +5 BD · +90 d · +3 BD |
+| entry | Stage = Contacted ∧ Replied At is empty |
+| exit | they reply |
+| on reply | → Stage Engaged · owner → Us · due +1 BD |
+| on exhaust | → Closed · No Decision Made. NOT do-not-contact |
+| escalation | none |
+| used by | sell |
+| today | The sell cadence, unchanged |
 
-Investor relationship tracking. **Out of scope for this manual** — it has no chase ladder and never
-had an engine. Recorded here so its fields are not mistaken for the others':
+### L12 · Approach cadence
 
-`stage` — `Reached Out` · `Intro Call` · `Ongoing Dialogue` · `Actively Engaged`.
-`engagementStatus` — its own six-option set: `Not Contacted Yet` · `In Discussions / Scheduled` ·
-`Awaiting Reply` · `Held Off (Check Back In 3 Months)` · `Not Interested` · `Crash Out (DNC)`.
-Plus `investorType`, `country`, `nextSteps`, `lastContact`, `followUpDate`.
-
-All 75 records sit at `Reached Out` — the stage has never been advanced on this board.
-
----
-
-## 3. Buy-side
-
-Deals where Nobridge helps someone buy a business.
-
-### 3.1 The spine — promotions
-
-This is what the old engine never modelled and what nobody wrote down: **when a deal earns its next
-stage.** Each row is a step; the trigger is the real-world event, and the writes are what the record
-must look like afterwards.
-
-| ID | Step | Trigger — the actual event | CRM writes |
-|---|---|---|---|
-| — | Deal appears | Company tagged `Buy side`; sync creates it within ~2 min | `stage = Stage 1 · New Lead` |
-| **A01** | Answer the lead | Intro + booking link goes out. **24 h** from the lead landing | `outreachSentAt = now` · `progressType = Actively Speaking` |
-| **P01** | → **Stage 2 · Intro Meeting + Screening** | A meeting is **booked** — *not held* | `stage = Stage 2` · `meetingOutcome = Scheduled` |
-| **A02** | Confirmation + agenda | Meeting booked. **24 h** | *(nothing stamped — see the gap below)* |
-| **X01** | Record the call | Gemini notes for that meeting are ingested | `meetingOutcome = Hosted` · note filed on Company + Contact + deal · action items queued for approval |
-| **A03** | Send the recap | Meeting hosted. **24 h** | `recapSentAt = now` |
-| **P02** | → **Stage 3 · Strategy / Value Creation** | We commit to producing the strategy document | `stage = Stage 3` — starts the 10-day A04 clock |
-| **A04** | Deliver the strategy document | **10 days** from entering Stage 3 | `strategySentAt = now` |
-| **P03** | → **Stage 4 · Strategy Review** | The review meeting is **booked** | `stage = Stage 4` · `meetingOutcome = Scheduled` |
-| **P04** | → **Stage 5 · Revamps** | Revamps are agreed on the review call | `stage = Stage 5` · `revampNeeded = true` |
-| **A05** | Deliver the revamps | **7 days** from entering Stage 5 | `revampSentAt = now` |
-| **P05** | → **Stage 6 · Service Evaluation + Pitch** | The pitch meeting is **booked** | `stage = Stage 6` · `meetingOutcome = Scheduled` |
-| **P06** | Close it out | A decision is reached | `stage = Completed` · `finalDecision = <verdict>` · `closeDate = now` · `progressType = Complete` |
-| **P07** | Disqualify | Never a real process — wrong fit, no mandate, no interest | `stage = Skipped` · `finalDecision = Disqualified` or `Not Interested` · `progressType = Complete` |
-
-> **The distinction to hold on to.** A meeting being **booked** promotes the stage. The **call note**
-> records what happened to it (`meetingOutcome = Hosted`). Two different events, at two different
-> moments, writing two different fields. Collapsing them into one manual stage drag — which is what
-> happens today — is why the board and the calendar disagree.
-
-**Stages 4 and 6 repeat the Stage 2 pattern exactly**: confirmation and agenda before, call note and
-recap after, no-show recovery if it is missed.
-
-**A gap worth knowing:** A02 (confirmation + agenda) stamps nothing. There is no field that records
-whether the agenda went out, so after the fact it is unrecoverable from the CRM. Same for D04.
-
-### 3.2 The chases — when they go quiet
-
-Each ladder runs from the last outbound touch, one open chase at a time. Day offsets are cumulative
-and calendar-based; every touch lands inside business hours, **09:00–18:00 Asia/Jakarta, Mon–Fri**.
-
-| ID | Chase | Runs when | Ladder |
-|---|---|---|---|
-| **B01** | Chase for a booking | `Stage 1` · `outreachSentAt` set · no meeting booked | days **2 · 6 · 14 · 30** → then dormant → C01 |
-| **B02** | Recover the no-show | `meetingOutcome = No-show` | reschedule now, then the same 2 · 6 · 14 · 30 |
-| **B03** | Chase to book Stage 4 | `Stage 3` · `strategySentAt` set · no next meeting | days **2 · 6 · 12 · 20** |
-| **B04** | Chase to book Stage 6 | `Stage 5` · `revampSentAt` set · no next meeting | days **2 · 6 · 12 · 20** |
-| **C01** | Re-engage | Dormant — ladder exhausted | one fresh touch at **+90 days**, one bump at **+97** |
-| **D04** | Re-confirm | `meetingOutcome = Rescheduled` or `Cancelled` | re-confirm within **24 h** |
-
-**When a ladder exhausts:** `progressType = Ghosted`, and the next re-engage date is recorded. The
-deal is not closed — it is parked, and C01 picks it back up.
-
-> The **Workflow** tab draws every one of these touches individually — the wait, the send and the
-> "did they reply" check between each pair — and it derives them from this table. Change a day
-> offset here and `workflow_detail.py` is wrong until someone changes it too.
-
-### 3.3 Interrupts
-
-| ID | Interrupt | Trigger | Effect |
-|---|---|---|---|
-| **D01** | They reply | An inbound email from the point of contact | Every chase stops. `repliedAt = now` · `progressType = Actively Speaking`. One thing to do: read it and answer |
-| **D02** | Lost | `finalDecision` set to a losing verdict | Everything open closes out |
-| **D03** | Won | `finalDecision = Closed Won` | Everything open closes out |
-
-A reply always beats a chase. Nothing scheduled survives it.
+| Parameter | Value |
+|---|---|
+| touches | 5 |
+| schedule | day 2 · 4 · 8 · 12 · 26 |
+| entry | Stage = Approach ∧ no reply |
+| exit | they reply |
+| on reply | → Stage Engaged · owner → Us · due +1 BD |
+| on exhaust | one repeat after +14 days, then → Closed · Dropped |
+| escalation | none |
+| used by | fulfillment |
+| today | F01 / F02 / FR01, merged into one object |
 
 ---
 
-## 4. Sell-side
+## 4. Buy-side
 
-Outbound to potential sellers. One fixed cadence that stops the moment someone answers.
+Nobridge helps someone buy a business. Inbound lead, nine stages, and a named loop at every point the other side can go quiet.
 
-The **same six stages** as Buy, and the same promotion rules (§3.1) — a booked meeting promotes, a
-call note records. Where Sell differs: the entry is a cold ladder rather than an inbound lead, and
-the board terminates at `Closed Won` rather than `Completed` / `Skipped`.
+Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 
-### 4.1 The cadence
+### Stages
 
-Each step fires only if there has been no reply since the previous touch. Business hours here are
-**08:00–17:00 Asia/Jakarta**.
-
-| # | Step | Delay from the previous touch | What it means about the deal |
+| # | Stage | New? | What it means |
 |---|---|---|---|
-| **S01** | First reach-out | — | `outreachSentAt = now` · `progressType = Actively Speaking` |
-| 1 | 2nd reach-out | **+2 business days** | — |
-| 2 | 3rd reach-out | **+5 business days** | — |
-| 3 | Ghosted — re-engage | **+14 calendar days** | `progressType = Ghosted` |
-| 4 | Re-engage follow-up | **+5 business days** | — |
-| 5 | 3-month re-engage | **+90 calendar days** | parked — `nextReachOutAt` carries the date |
-| 6 | 3-month re-engage, 2nd try | **+3 business days** | — |
-| — | Ladder exhausted | — | Do not contact. Verdict, not pulse — see below |
+| 1 | Lead | **NEW** | It arrived. Nobody has worked it yet |
+| 2 | Qualified | **NEW** | Screened, and worth the time |
+| 3 | Intro Meeting | — | Meeting 1 · screening call |
+| 4 | Strategy | — | Producing the strategy document |
+| 5 | Strategy Review | — | Meeting 2 · walking them through it |
+| 6 | Revamps | — | The revisions they asked for |
+| 7 | Pitch | — | Meeting 3 · service evaluation |
+| 8 | Negotiation | **NEW** | Terms, paperwork, signature |
+| 9 | Closed | **NEW** | One terminal, four verdicts |
 
-Every step writes `nextReachOutAt` = the next touch's date. That field is the only forward-looking
-one on the board and is what makes "waiting on them" a filterable state rather than a feeling.
+### Steps
 
-> This table is what the **Workflow** tab draws touch by touch, one wait node and one reply check
-> per row above. Edit the delays here and `workflow_detail.py`'s `SELL_CADENCE` needs the same edit.
+#### Lead
 
-> **Those marks are gone.** The cadence used to write `Ghosted` onto 16 deals and `Held Off` onto 5
-> — machine output that read like someone's judgement. All of them were cleared in the 2026-08-07
-> field-footprint pass (§10), so today the sell board's pulse is `Complete` on 15, `Actively
-> Speaking` on 4, and **blank on 16**. Anything you see there now was typed by a person.
+**B01 · The record appears**
 
-### 4.2 Interrupts
+| Field | Value |
+|---|---|
+| trigger | A company is tagged Client Type = Buy side |
+| timing | ~2 min |
+| condition | — |
+| writes | Stage = Lead · Stage Changed At = now · Source |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | runs on its own |
 
-| ID | Interrupt | Effect |
-|---|---|---|
-| **SD01** | They reply | Cadence stops. `repliedAt = now` · `progressType = Actively Speaking`. One thing to do: meet them to understand what they need |
-| **ST01** | Closed | Won, lost or do-not-contact → everything open closes out |
+**B02 · Assign an owner**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Owner is empty |
+| timing | ≤ 15 min of creation |
+| condition | — |
+| writes | Owner = the assignee · Next Owner = Us · Next Action Due = +1 BD |
+| owner | → Us · due +1 BD |
+| exit | an owner is set |
+| escalation | unassigned after 1 BD → the manager |
+| who | runs on its own |
+
+> New, and the one that makes the rest work. Nothing assigns a record today, so 'nobody owns it' is the normal state rather than an exception.
+
+**B03 · Screen it**  `NEW`  → loop **L2**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Lead ∧ Qualified is empty |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Qualified = true/false · Screening Notes |
+| owner | → Us · due +1 BD |
+| exit | qualified or disqualified |
+| escalation | L2 — day 1 · 3 · 7, then Disqualified |
+| who | by hand |
+
+> New. Today a lead and a qualified lead are the same stage, which is why the board cannot tell you how many real opportunities are open.
+
+**B04 · Promote to Qualified**
+
+| Field | Value |
+|---|---|
+| trigger | Qualified = true |
+| timing | on screening |
+| condition | — |
+| writes | Stage = Qualified · Stage Changed At = now |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Qualified
+
+**B11 · Send the intro + booking link**
+
+| Field | Value |
+|---|---|
+| trigger | Outreach Sent At is empty |
+| timing | within 24 h · 09:00–18:00 |
+| condition | Qualified = true |
+| writes | Outreach Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they reply, or they book |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**B12 · Chase for a booking**  → loop **L1**
+
+| Field | Value |
+|---|---|
+| trigger | Outreach Sent At set ∧ no meeting booked |
+| timing | day 2 · 6 · 14 · 30 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | reply or booking |
+| escalation | L1 exhausts → L9 |
+| who | by hand |
+
+**B14 · Promote to Intro Meeting**
+
+| Field | Value |
+|---|---|
+| trigger | A meeting is BOOKED — not held |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Intro Meeting · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> The BOOKING promotes; the call note records what happened to it. Two events, two moments, two fields.
+
+#### Intro Meeting
+
+**B21 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**B22 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**B23 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**B24 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**B25 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**B26 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**B27 · Promote to Strategy**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Strategy · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Strategy
+
+**B31 · Agree the scope of the strategy document**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Strategy |
+| timing | within 2 BD |
+| condition | — |
+| writes | Scope Agreed At = now |
+| owner | → Us · due +2 BD |
+| exit | scope written down |
+| escalation | — |
+| who | by hand |
+
+> New. Today the clock starts at the stage move with nothing recording what was actually promised, which is how a deliverable slips without anyone disagreeing.
+
+**B32 · Deliver the strategy document**  → loop **L5**
+
+| Field | Value |
+|---|---|
+| trigger | Strategy Sent At is empty |
+| timing | 10 days from the stage move · 09:00–18:00 |
+| condition | Scope agreed |
+| writes | Strategy Sent At = now |
+| owner | → Us · due = the SLA |
+| exit | it goes out |
+| escalation | L5 — Escalated At at day 10, manager at day 13 |
+| who | by hand |
+
+> Never auto-completed: a sent email is not proof a document went out. That judgement held for the retired engine and still holds.
+
+**B33 · Chase the next meeting**  → loop **L6**
+
+| Field | Value |
+|---|---|
+| trigger | Strategy Sent At set ∧ no next meeting booked |
+| timing | day 2 · 6 · 12 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | a meeting is booked |
+| escalation | L6 exhausts → L9 |
+| who | by hand |
+
+**B34 · Promote to Strategy Review**
+
+| Field | Value |
+|---|---|
+| trigger | The meeting is BOOKED — not held |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Strategy Review · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Strategy Review
+
+**B41 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**B42 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**B43 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**B44 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**B45 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**B46 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**B47 · Promote to Revamps**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Revamps · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Revamps
+
+**B51 · Agree the scope of the revamps**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Revamps |
+| timing | within 2 BD |
+| condition | — |
+| writes | Scope Agreed At = now |
+| owner | → Us · due +2 BD |
+| exit | scope written down |
+| escalation | — |
+| who | by hand |
+
+> New. Today the clock starts at the stage move with nothing recording what was actually promised, which is how a deliverable slips without anyone disagreeing.
+
+**B52 · Deliver the revamps**  → loop **L5**
+
+| Field | Value |
+|---|---|
+| trigger | Revamp Sent At is empty |
+| timing | 7 days from the stage move · 09:00–18:00 |
+| condition | Scope agreed |
+| writes | Revamp Sent At = now |
+| owner | → Us · due = the SLA |
+| exit | it goes out |
+| escalation | L5 — Escalated At at day 7, manager at day 10 |
+| who | by hand |
+
+> Never auto-completed: a sent email is not proof a document went out. That judgement held for the retired engine and still holds.
+
+**B53 · Chase the next meeting**  → loop **L6**
+
+| Field | Value |
+|---|---|
+| trigger | Revamp Sent At set ∧ no next meeting booked |
+| timing | day 2 · 6 · 12 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | a meeting is booked |
+| escalation | L6 exhausts → L9 |
+| who | by hand |
+
+**B54 · Promote to Pitch**
+
+| Field | Value |
+|---|---|
+| trigger | The meeting is BOOKED — not held |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Pitch · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Pitch
+
+**B61 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**B62 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**B63 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**B64 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**B65 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–18:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**B66 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**B67 · Promote to Negotiation**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Negotiation · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Negotiation
+
+**B71 · Send the engagement letter**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Negotiation |
+| timing | within 2 BD · 09:00–18:00 |
+| condition | — |
+| writes | Proposal Sent At = now |
+| owner | → Them · due +3 days |
+| exit | they respond |
+| escalation | L5 |
+| who | by hand |
+
+**B72 · Chase the response**  `NEW`  → loop **L7**
+
+| Field | Value |
+|---|---|
+| trigger | Proposal Sent At set ∧ no response |
+| timing | day 3 · 7 · 14 · 21 · 09:00–18:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | terms agreed, or a decision |
+| escalation | day 14 → the owner's manager |
+| who | by hand |
+
+**B73 · Work the redlines**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | They return comments |
+| timing | within 2 BD |
+| condition | — |
+| writes | Terms Agreed At = now when settled |
+| owner | → Us · due +2 BD |
+| exit | terms settled |
+| escalation | 3 rounds → the owner's manager |
+| who | by hand |
+
+> Drawn as its own step because it is the one that repeats invisibly. Three rounds of redlines is a different deal from one, and nothing records that.
+
+**B74 · Out for signature**  `NEW`  → loop **L8**
+
+| Field | Value |
+|---|---|
+| trigger | Terms Agreed At set |
+| timing | day 2 · 5 · 10 · 20 · 09:00–18:00 |
+| condition | — |
+| writes | Signature Sent At = now · Contract Signed At on return |
+| owner | → Them · due = the next touch |
+| exit | signed |
+| escalation | day 10 → the owner's manager |
+| who | by hand |
+
+**B75 · Close it won**
+
+| Field | Value |
+|---|---|
+| trigger | Contract Signed At set |
+| timing | same day |
+| condition | — |
+| writes | Stage = Closed · Final Decision = Closed Won · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Closed
+
+**B91 · Closed Lost**
+
+| Field | Value |
+|---|---|
+| trigger | They say no |
+| timing | on the decision |
+| condition | — |
+| writes | Final Decision = Closed Lost · Close Date = now · owner and due cleared |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+**B92 · No Decision Made**
+
+| Field | Value |
+|---|---|
+| trigger | L3 or L7 ran out and they never came back |
+| timing | on the loop ending |
+| condition | — |
+| writes | Final Decision = No Decision Made · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> Reached only through a loop that actually ran. That is the whole meaning of the value, and it is why 40 buy deals carrying it at Stage 1 are wrong.
+
+**B93 · Disqualified**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Screening failed, or L2 ran out |
+| timing | on judgement |
+| condition | — |
+| writes | Final Decision = Disqualified · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> Replaces the Skipped stage. A verdict, not a position — which is what it always was.
+
+**B94 · Do not contact**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | They ask not to be approached again |
+| timing | immediately |
+| condition | — |
+| writes | Final Decision = Do Not Contact · Close Date = now |
+| owner | cleared |
+| exit | — terminal, and never re-entered |
+| escalation | — |
+| who | by hand |
+
+> The only verdict here with a consequence outside the CRM. It must never feed L10, and today it has no field at all on Sell.
+
+**B95 · Come back round**  `NEW`  → loop **L10**
+
+| Field | Value |
+|---|---|
+| trigger | Final Decision = Follow Up (90) or (180) |
+| timing | +90 days, then +180 |
+| condition | Not Do Not Contact |
+| writes | A fresh deal at Stage 2 if they bite |
+| owner | → Them · due = the re-engage date |
+| exit | they reply |
+| escalation | — |
+| who | by hand |
+
+> The closed loop, finally with a mechanism. Designed in WORKFLOWS.md §8 and never built.
+
+#### Any
+
+**B13 · They reply**
+
+| Field | Value |
+|---|---|
+| trigger | An inbound email from the point of contact |
+| timing | instant |
+| condition | — |
+| writes | Replied At = now · every loop stops |
+| owner | → Us · due +1 BD |
+| exit | somebody answers it |
+| escalation | unanswered 2 BD → the owner |
+| who | by hand |
+
+> The handover is the new part. Today a reply cancels every scheduled touch and schedules nothing back, which makes it the most dangerous event on the board.
+
+**B80 · Park it as dormant**  → loop **L9**
+
+| Field | Value |
+|---|---|
+| trigger | Any loop runs out |
+| timing | on the loop ending |
+| condition | — |
+| writes | Progress Type = Ghosted · Next Action Due = +90 days |
+| owner | → Them · due +90 days |
+| exit | L9 re-engages it |
+| escalation | — |
+| who | by hand |
+
+> Every loop feeds this, not just the cold one. That is the single biggest difference from today.
 
 ---
 
-## 5. Fulfillment
+## 5. Sell-side
 
-Approaching targets on behalf of a live sell-side mandate. `mandate` says which client.
+Cold outbound to potential sellers. Three entry stages instead of one, then the same spine as buy-side once somebody answers.
 
-### 5.1 The spine
+Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 
-| ID | Step | Trigger | CRM writes |
+### Stages
+
+| # | Stage | New? | What it means |
 |---|---|---|---|
-| — | Record appears | Company tagged `Fulfillment`, or a mandate list import | `stage = Reached Out / Teaser` |
-| **FP01** | → **Meeting 1** | Intro meeting booked | `stage = Meeting 1` |
-| **X01** | Record the call | Gemini notes ingested | note filed · `meetingFindings` updated · action items queued |
-| **FP02** | → **NDA** | NDA sent for signature | `stage = NDA` |
-| **FP03** | → **Meeting 2** | Second meeting booked | `stage = Meeting 2` |
-| **FP04** | → **Due Diligence** | VDR opened to them | `stage = Due Diligence` |
-| **FP05** | → **Meeting 3** | Third meeting booked | `stage = Meeting 3` |
-| **FP06** | → **Waiting on Offer** | They confirm an offer is being prepared | `stage = Waiting on Offer` |
-| **FP07** | Close it out | Offer lands, they pass, or they go dark for good | `outcome = Offer Received \| Passed \| Dropped` · `progressType = Complete` |
+| 1 | Target | **NEW** | On the list. Nobody has touched it |
+| 2 | Contacted | **NEW** | The cadence is running |
+| 3 | Engaged | **NEW** | They answered |
+| 4 | Intro Meeting | — | Meeting 1 · understanding what they need |
+| 5 | Strategy | — | Producing the strategy document |
+| 6 | Strategy Review | — | Meeting 2 |
+| 7 | Revamps | — | The revisions |
+| 8 | Pitch | — | Meeting 3 · service evaluation |
+| 9 | Negotiation | **NEW** | Terms, paperwork, signature |
+| 10 | Closed | **NEW** | One terminal, four verdicts |
 
-Unlike Buy and Sell there is no `Skipped` — a target that never engages is `Dropped`.
+### Steps
 
-### 5.2 The chase
+#### Target
 
-One ladder, cumulative days **2 · 4 · 8 · 12 · 26** from the last touch, business hours
-**09:00–17:00 Asia/Jakarta**. Two variants, same timing, different tone:
+**S01 · The record appears**
 
-| ID | Variant | Runs when |
-|---|---|---|
-| **F01** | Chase for a response | Pulse is `Ghosted` or blank — they have not engaged |
-| **F02** | Nudge it along | Pulse is `Actively Speaking` — keep the process moving |
+| Field | Value |
+|---|---|
+| trigger | A company is tagged Client Type = Sell side |
+| timing | ~2 min |
+| condition | — |
+| writes | Stage = Target · Stage Changed At = now · Source |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | runs on its own |
 
-Runs **at most twice**: the initial cycle, then — if still silent — a **+14-day** re-engagement that
-repeats the same ladder once. After the second cycle, chasing stops and the record is handed back
-for a human decision. `followUpDate` carries the next touch; `daysSinceContact` shows the drift.
+> Target, not Stage 1. A company on the list is not a deal in progress, and today the board cannot tell the difference.
 
-> The **Workflow** tab draws both cycles in full, five touches each, from these offsets — and
-> draws §5.1's seven stages as seven nodes rather than the single box the summary chart uses.
+**S02 · Assign an owner**  `NEW`
 
-### 5.3 Interrupts
+| Field | Value |
+|---|---|
+| trigger | Owner is empty |
+| timing | ≤ 15 min |
+| condition | — |
+| writes | Owner = the assignee |
+| owner | → Us · due +1 BD |
+| exit | an owner is set |
+| escalation | 1 BD → the manager |
+| who | runs on its own |
 
-| ID | Interrupt | Effect |
-|---|---|---|
-| **FD01** | They reply | All chases stop. `repliedAt = now` · `progressType = Actively Speaking` |
-| **FT01** | Completed | `outcome` recorded, or pulse set to `Complete` → everything open closes out |
+**S03 · Verify the contact**  `NEW`  → loop **L2**
 
-**No 90-day loop here, deliberately.** A fulfillment record is an approach target for a specific
-mandate. When the mandate ends the target is not re-approached on its own — it becomes a Buy-side
-lead if it is worth one.
+| Field | Value |
+|---|---|
+| trigger | Stage = Target |
+| timing | within 2 BD · 08:00–17:00 |
+| condition | — |
+| writes | Contact Verified At = now |
+| owner | → Us · due +2 BD |
+| exit | a named contact with a working address |
+| escalation | L2 |
+| who | by hand |
+
+> New. Outbound to an unverified address is how a cadence burns six touches against a bounced mailbox and reads as a ghosting.
+
+#### Contacted
+
+**S04 · First reach-out**
+
+| Field | Value |
+|---|---|
+| trigger | Contact verified ∧ Outreach Sent At is empty |
+| timing | within 1 BD · 08:00–17:00 |
+| condition | — |
+| writes | Stage = Contacted · Outreach Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they reply |
+| escalation | — |
+| who | by hand |
+
+**S05 · The cadence**  → loop **L11**
+
+| Field | Value |
+|---|---|
+| trigger | Outreach Sent At set ∧ Replied At empty |
+| timing | +2 BD · +5 BD · +14 d · +5 BD · +90 d · +3 BD · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they reply |
+| escalation | L11 exhausts → Closed · No Decision Made |
+| who | by hand |
+
+> Running out is NOT do-not-contact. One is a ladder that ended and comes back round; the other is a company that asked us to stop.
+
+#### Engaged
+
+**S06 · They answer**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | An inbound reply |
+| timing | instant |
+| condition | — |
+| writes | Stage = Engaged · Replied At = now · the cadence stops |
+| owner | → Us · due +1 BD |
+| exit | a meeting is booked |
+| escalation | unanswered 2 BD → the owner |
+| who | by hand |
+
+> Engaged is a position now, not a timestamp. A seller who answers and then drifts is currently in a worse place than one who ignored us, because the one who ignored us is still on a ladder.
+
+**S07 · Qualify the seller**  `NEW`  → loop **L2**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Engaged ∧ Qualified is empty |
+| timing | within 2 BD · 08:00–17:00 |
+| condition | — |
+| writes | Qualified = true/false |
+| owner | → Us · due +2 BD |
+| exit | qualified or disqualified |
+| escalation | L2 |
+| who | by hand |
+
+**S08 · Chase for the intro meeting**  `NEW`  → loop **L1**
+
+| Field | Value |
+|---|---|
+| trigger | Replied At set ∧ no meeting booked |
+| timing | day 2 · 6 · 14 · 30 · 08:00–17:00 |
+| condition | Qualified = true |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | a meeting is booked |
+| escalation | L1 exhausts → L9 |
+| who | by hand |
+
+**S09 · Promote to Intro Meeting**
+
+| Field | Value |
+|---|---|
+| trigger | A meeting is BOOKED |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Intro Meeting · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Intro Meeting
+
+**S21 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**S22 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**S23 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**S24 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**S25 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**S26 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**S27 · Promote to Strategy**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Strategy · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Strategy
+
+**S31 · Agree the scope of the strategy document**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Strategy |
+| timing | within 2 BD |
+| condition | — |
+| writes | Scope Agreed At = now |
+| owner | → Us · due +2 BD |
+| exit | scope written down |
+| escalation | — |
+| who | by hand |
+
+> New. Today the clock starts at the stage move with nothing recording what was actually promised, which is how a deliverable slips without anyone disagreeing.
+
+**S32 · Deliver the strategy document**  → loop **L5**
+
+| Field | Value |
+|---|---|
+| trigger | Strategy Sent At is empty |
+| timing | 10 days from the stage move · 08:00–17:00 |
+| condition | Scope agreed |
+| writes | Strategy Sent At = now |
+| owner | → Us · due = the SLA |
+| exit | it goes out |
+| escalation | L5 — Escalated At at day 10, manager at day 13 |
+| who | by hand |
+
+> Never auto-completed: a sent email is not proof a document went out. That judgement held for the retired engine and still holds.
+
+**S33 · Chase the next meeting**  → loop **L6**
+
+| Field | Value |
+|---|---|
+| trigger | Strategy Sent At set ∧ no next meeting booked |
+| timing | day 2 · 6 · 12 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | a meeting is booked |
+| escalation | L6 exhausts → L9 |
+| who | by hand |
+
+**S34 · Promote to Strategy Review**
+
+| Field | Value |
+|---|---|
+| trigger | The meeting is BOOKED — not held |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Strategy Review · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Strategy Review
+
+**S41 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**S42 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**S43 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**S44 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**S45 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**S46 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**S47 · Promote to Revamps**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Revamps · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Revamps
+
+**S51 · Agree the scope of the revamps**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Revamps |
+| timing | within 2 BD |
+| condition | — |
+| writes | Scope Agreed At = now |
+| owner | → Us · due +2 BD |
+| exit | scope written down |
+| escalation | — |
+| who | by hand |
+
+> New. Today the clock starts at the stage move with nothing recording what was actually promised, which is how a deliverable slips without anyone disagreeing.
+
+**S52 · Deliver the revamps**  → loop **L5**
+
+| Field | Value |
+|---|---|
+| trigger | Revamp Sent At is empty |
+| timing | 7 days from the stage move · 08:00–17:00 |
+| condition | Scope agreed |
+| writes | Revamp Sent At = now |
+| owner | → Us · due = the SLA |
+| exit | it goes out |
+| escalation | L5 — Escalated At at day 7, manager at day 10 |
+| who | by hand |
+
+> Never auto-completed: a sent email is not proof a document went out. That judgement held for the retired engine and still holds.
+
+**S53 · Chase the next meeting**  → loop **L6**
+
+| Field | Value |
+|---|---|
+| trigger | Revamp Sent At set ∧ no next meeting booked |
+| timing | day 2 · 6 · 12 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | a meeting is booked |
+| escalation | L6 exhausts → L9 |
+| who | by hand |
+
+**S54 · Promote to Pitch**
+
+| Field | Value |
+|---|---|
+| trigger | The meeting is BOOKED — not held |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Pitch · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Pitch
+
+**S61 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**S62 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**S63 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**S64 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**S65 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 08:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**S66 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**S67 · Promote to Negotiation**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Negotiation · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Negotiation
+
+**S71 · Send the engagement letter**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Negotiation |
+| timing | within 2 BD · 08:00–17:00 |
+| condition | — |
+| writes | Proposal Sent At = now |
+| owner | → Them · due +3 days |
+| exit | they respond |
+| escalation | L5 |
+| who | by hand |
+
+**S72 · Chase the response**  `NEW`  → loop **L7**
+
+| Field | Value |
+|---|---|
+| trigger | Proposal Sent At set ∧ no response |
+| timing | day 3 · 7 · 14 · 21 · 08:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | terms agreed, or a decision |
+| escalation | day 14 → the owner's manager |
+| who | by hand |
+
+**S73 · Work the redlines**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | They return comments |
+| timing | within 2 BD |
+| condition | — |
+| writes | Terms Agreed At = now when settled |
+| owner | → Us · due +2 BD |
+| exit | terms settled |
+| escalation | 3 rounds → the owner's manager |
+| who | by hand |
+
+> Drawn as its own step because it is the one that repeats invisibly. Three rounds of redlines is a different deal from one, and nothing records that.
+
+**S74 · Out for signature**  `NEW`  → loop **L8**
+
+| Field | Value |
+|---|---|
+| trigger | Terms Agreed At set |
+| timing | day 2 · 5 · 10 · 20 · 08:00–17:00 |
+| condition | — |
+| writes | Signature Sent At = now · Contract Signed At on return |
+| owner | → Them · due = the next touch |
+| exit | signed |
+| escalation | day 10 → the owner's manager |
+| who | by hand |
+
+**S75 · Close it won**
+
+| Field | Value |
+|---|---|
+| trigger | Contract Signed At set |
+| timing | same day |
+| condition | — |
+| writes | Stage = Closed · Final Decision = Closed Won · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Closed
+
+**S91 · Closed Lost**
+
+| Field | Value |
+|---|---|
+| trigger | They say no |
+| timing | on the decision |
+| condition | — |
+| writes | Final Decision = Closed Lost · Close Date = now · owner and due cleared |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+**S92 · No Decision Made**
+
+| Field | Value |
+|---|---|
+| trigger | L3 or L7 ran out and they never came back |
+| timing | on the loop ending |
+| condition | — |
+| writes | Final Decision = No Decision Made · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> Reached only through a loop that actually ran. That is the whole meaning of the value, and it is why 40 buy deals carrying it at Stage 1 are wrong.
+
+**S93 · Disqualified**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Screening failed, or L2 ran out |
+| timing | on judgement |
+| condition | — |
+| writes | Final Decision = Disqualified · Close Date = now |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> Replaces the Skipped stage. A verdict, not a position — which is what it always was.
+
+**S94 · Do not contact**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | They ask not to be approached again |
+| timing | immediately |
+| condition | — |
+| writes | Final Decision = Do Not Contact · Close Date = now |
+| owner | cleared |
+| exit | — terminal, and never re-entered |
+| escalation | — |
+| who | by hand |
+
+> The only verdict here with a consequence outside the CRM. It must never feed L10, and today it has no field at all on Sell.
+
+**S95 · Come back round**  `NEW`  → loop **L10**
+
+| Field | Value |
+|---|---|
+| trigger | Final Decision = Follow Up (90) or (180) |
+| timing | +90 days, then +180 |
+| condition | Not Do Not Contact |
+| writes | A fresh deal at Stage 2 if they bite |
+| owner | → Them · due = the re-engage date |
+| exit | they reply |
+| escalation | — |
+| who | by hand |
+
+> The closed loop, finally with a mechanism. Designed in WORKFLOWS.md §8 and never built.
+
+#### Any
+
+**S80 · Park it as dormant**  → loop **L9**
+
+| Field | Value |
+|---|---|
+| trigger | Any loop runs out |
+| timing | on the loop ending |
+| condition | — |
+| writes | Progress Type = Ghosted · Next Action Due = +90 days |
+| owner | → Them · due +90 days |
+| exit | L9 re-engages it |
+| escalation | — |
+| who | by hand |
 
 ---
 
-## 6. Play ↔ CRM binding
+## 6. Fulfillment
 
-The merge, in one table. The left column is the retired engine's internal state; the middle is the
-same thing expressed in fields that are visible on the record. **Nothing on the left needs to exist
-any more** — that is the point.
+Approaching targets for a live sell-side mandate. Nine stages, and for the first time a loop on every one of them.
 
-| Engine sub-state | The same thing, in CRM fields | Play |
-|---|---|---|
-| `NEW_LEAD : AWAITING_OUTREACH` | `Stage 1` ∧ `outreachSentAt` empty | A01 |
-| `NEW_LEAD : AWAITING_BOOKING` | `Stage 1` ∧ `outreachSentAt` set | B01 |
-| `MEETING_1/2/3 : SCHEDULED` | `Stage 2/4/6` ∧ `meetingOutcome = Scheduled` | A02 |
-| `MEETING_1/2/3 : HOSTED` | `Stage 2/4/6` ∧ `meetingOutcome = Hosted` | A03 |
-| `MEETING_1/2/3 : NO_SHOW` | `meetingOutcome = No-show` | B02 |
-| `MEETING_1/2/3 : RESCHEDULED` | `meetingOutcome ∈ {Rescheduled, Cancelled}` | D04 |
-| `STRATEGY : AWAITING_DOC` | `Stage 3` ∧ `strategySentAt` empty | A04 |
-| `STRATEGY : AWAITING_BOOKING` | `Stage 3` ∧ `strategySentAt` set | B03 |
-| `REVAMPS : AWAITING_REVAMP` | `Stage 5` ∧ `revampSentAt` empty | A05 |
-| `REVAMPS : AWAITING_BOOKING` | `Stage 5` ∧ `revampSentAt` set | B04 |
-| **`DORMANT : HELD_OFF`** | `progressType = Ghosted` ∧ a re-engage date is set | C01 |
-| **`LOST : TERMINAL`** | `finalDecision ∈ {Closed Lost, Not Interested, Disqualified}` | D02 |
-| `CLOSED_WON : TERMINAL` | `finalDecision = Closed Won` | D03 |
-| `NEW : AWAITING_OUTREACH` (sell) | `outreachSentAt` empty ∧ never replied | S01 |
-| `ACTIVE : CHASE` (sell) | `outreachSentAt` set ∧ `repliedAt` empty | S02 |
-| `ACTIVE : CHASE` (fulfillment) | pulse `Ghosted` or blank | F01 |
-| `ACTIVE : ENGAGED` (fulfillment) | pulse `Actively Speaking` | F02 |
-| `TERMINAL : DONE` (fulfillment) | `outcome` set, or pulse `Complete` | FT01 |
+Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 
-**`DORMANT` and `LOST` are not stages** and must never be added as ones. Dormant is a pulse value
-plus a future date; Lost is a verdict. The stage column stays a record of how far the conversation
-got.
+### Stages
 
-### The eight status buckets
-
-The engine sorted every record into one of eight buckets. They remain a good vocabulary for reading
-a board by eye, and each is now a filter you could actually build:
-
-| Bucket | Reads as | Filter |
-|---|---|---|
-| Needs response | The ball is in our court | `repliedAt` newer than our last touch |
-| Meeting booked | Send confirmation + agenda | `meetingOutcome = Scheduled` |
-| On task | We owe a deliverable | in a deliverable stage with its `*SentAt` empty |
-| Follow-up due | A chase touch is owed | next reach-out date is today or past |
-| Waiting on them | Nothing to do right now | next reach-out date is in the future |
-| Dormant | Parked, will come back | `progressType = Ghosted` + a re-engage date |
-| No automation | Human-managed | none of the above |
-| Closed | Over | `finalDecision` / `outcome` set |
-
----
-
-## 7. What runs today, and what is proposed
-
-### Running now
-
-**Call Intelligence** — the only pipeline automation still live. Every 15 minutes it reads the
-Gemini notes from ended Google Meet calls, files **one note on the Company, the Contact and the
-deal**, and extracts the follow-ups. Those follow-ups are **not** written straight in: they queue on
-**node.nobridge.co → Calls** and become real CRM tasks only when a person approves them.
-
-**Client Type sync** — every 2 minutes; tags on a Company create and maintain its deals across the
-five boards.
-
-**Nightly refreshes** — `lastContacted` phrases at 06:30; Fulfillment's `lastContact` and
-`daysSinceContact` at 06:35.
-
-### Proposed, in the order it should be built
-
-**Tier 1 — keep state, create no tasks.** The CRM stamps its own clock (`stageChangedAt` on every
-stage move, `lastContactedAt` from message sync) and derives `progressType` from it. Overdue work
-appears as saved views on the board, never as a generated task. Zero noise by construction. Twenty
-v2.7.3 can do all of this natively — cron and database-event triggers, find/filter/iterate/update
-actions — with no external service.
-
-**Tier 2 — call notes drive the moves.** Extend Call Intelligence to set `meetingOutcome = Hosted`
-and to *propose* the stage promotion and the verdict, queued on the Calls tab alongside the action
-items it already queues. This is the only automation with any understanding of what was said, which
-is precisely what the retired engines lacked.
-
-**Tier 3 — the chase ladders.** §3.2, §4.1 and §5.2 rebuilt as native CRM workflows that create real
-tasks. **Built last and behind a switch.** This is the tier that produced 440 tasks nobody wanted;
-Tiers 1 and 2 have to be trusted first.
-
-None of this needs the old engine. `PIPELINE_ENGINES_ENABLED` stays a tombstone (§10).
-
----
-
-## 8. The closed loop
-
-The pipeline is meant to be **closed**. A deal that dies is not dropped — it goes back to the
-original contact for a fresh check-in after about **90 days**, and if they bite it rejoins the normal
-chase as a live deal.
-
-| Pipeline | Closed loop? | Where it rejoins | How it is recorded |
+| # | Stage | New? | What it means |
 |---|---|---|---|
-| Buy-side | Yes | Lost → 90 days → re-engage → back onto the B01 ladder | `finalDecision = Follow Up (90)` or `(180)` |
-| Sell-side | Yes | Do-not-contact → 90 days → re-engage → back onto the cadence | *(no field for it yet — Phase 2)* |
-| Fulfillment | **No, deliberately** | — | Mandate work, not a prospect to re-approach |
+| 1 | Approach | **NEW** | Teaser out. No answer yet |
+| 2 | Engaged | **NEW** | They answered |
+| 3 | Meeting 1 | — | Intro call |
+| 4 | NDA | — | Out for signature |
+| 5 | Meeting 2 | — | First real conversation about numbers |
+| 6 | Due Diligence | — | The data room is open to them |
+| 7 | Meeting 3 | — | Post-diligence |
+| 8 | Offer Expected | **NEW** | They said an offer is coming |
+| 9 | Closed | **NEW** | Offer Received · Passed · Dropped |
 
-**The engine never did this.** On buy-side it cancelled everything at Lost and stopped; on sell-side
-it marked do-not-contact and stopped. The 90-day re-engage that did run only ever fired for a lead
-that *went quiet*, never for one marked Lost. On the dashboard's flowcharts this loop is drawn in
-**violet and dashed** so it is never confused with what actually ran.
+### Steps
 
-Buy-side is the only board that can currently express it, via `Follow Up (90)` / `Follow Up (180)`.
-Two deals carry each today.
+#### Approach
+
+**F01 · The record appears**
+
+| Field | Value |
+|---|---|
+| trigger | Tagged Client Type = Fulfillment, or a mandate list import |
+| timing | ~2 min |
+| condition | — |
+| writes | Stage = Approach · Mandate · Stage Changed At = now |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | runs on its own |
+
+**F02 · Assign an owner**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Owner is empty |
+| timing | ≤ 15 min |
+| condition | — |
+| writes | Owner = the assignee |
+| owner | → Us · due +1 BD |
+| exit | an owner is set |
+| escalation | 1 BD → the manager |
+| who | runs on its own |
+
+**F03 · Send the teaser**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Approach ∧ Outreach Sent At empty |
+| timing | within 2 BD · 09:00–17:00 |
+| condition | The mandate is live |
+| writes | Outreach Sent At = now |
+| owner | → Them · due +2 days |
+| exit | they reply |
+| escalation | — |
+| who | by hand |
+
+**F04 · The approach cadence**  → loop **L12**
+
+| Field | Value |
+|---|---|
+| trigger | Outreach Sent At set ∧ no reply |
+| timing | day 2 · 4 · 8 · 12 · 26 · 09:00–17:00 |
+| condition | — |
+| writes | Follow-up Date = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they reply |
+| escalation | one repeat after +14 d, then Closed · Dropped |
+| who | by hand |
+
+> F01, F02 and FR01 collapse into one loop with a repeat count. Same behaviour, one object instead of three plays that had to be read together.
+
+#### Engaged
+
+**F05 · They answer**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | An inbound reply |
+| timing | instant |
+| condition | — |
+| writes | Stage = Engaged · Replied At = now · the cadence stops |
+| owner | → Us · due +1 BD |
+| exit | a meeting is booked |
+| escalation | unanswered 2 BD → the owner |
+| who | by hand |
+
+**F06 · Qualify the interest**  `NEW`  → loop **L2**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Engaged |
+| timing | within 2 BD · 09:00–17:00 |
+| condition | — |
+| writes | Qualified = true/false · Prospect Type confirmed |
+| owner | → Us · due +2 BD |
+| exit | qualified or dropped |
+| escalation | L2 |
+| who | by hand |
+
+**F07 · Promote to Meeting 1**
+
+| Field | Value |
+|---|---|
+| trigger | The intro meeting is BOOKED |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Meeting 1 · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+> Meeting Outcome does not exist on this board today, so a fulfillment no-show has no state and no recovery.
+
+#### Meeting 1
+
+**F11 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**F12 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**F13 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**F14 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**F15 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**F16 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**F17 · Promote to NDA**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = NDA · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### NDA
+
+**F20 · Send the NDA**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = NDA |
+| timing | within 1 BD · 09:00–17:00 |
+| condition | — |
+| writes | NDA Sent At = now |
+| owner | → Them · due +2 days |
+| exit | signed |
+| escalation | — |
+| who | by hand |
+
+**F21 · Chase the signature**  `NEW`  → loop **L8**
+
+| Field | Value |
+|---|---|
+| trigger | NDA Sent At set ∧ NDA Signed At empty |
+| timing | day 2 · 5 · 10 · 20 · 09:00–17:00 |
+| condition | — |
+| writes | Follow-up Date = the next touch |
+| owner | → Them · due = the next touch |
+| exit | NDA Signed At = now |
+| escalation | day 10 → the owner's manager |
+| who | by hand |
+
+> New. An NDA that goes out and is never signed is currently indistinguishable from one that came back the same afternoon.
+
+**F22 · Promote to Meeting 2**
+
+| Field | Value |
+|---|---|
+| trigger | The second meeting is BOOKED |
+| timing | on booking |
+| condition | NDA signed |
+| writes | Stage = Meeting 2 · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Meeting 2
+
+**F31 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**F32 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**F33 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**F34 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**F35 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**F36 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**F37 · Promote to Due Diligence**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Due Diligence · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Due Diligence
+
+**F40 · Open the data room**
+
+| Field | Value |
+|---|---|
+| trigger | Stage = Due Diligence |
+| timing | within 2 BD · 09:00–17:00 |
+| condition | NDA signed |
+| writes | VDR Opened At = now |
+| owner | → Them · due +7 days |
+| exit | they engage with it |
+| escalation | — |
+| who | by hand |
+
+**F41 · Check they are actually in it**  `NEW`  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | VDR Opened At set ∧ no activity in 7 days |
+| timing | day 7 · 14 · 21 · 09:00–17:00 |
+| condition | — |
+| writes | Follow-up Date = the next touch |
+| owner | → Them · due = the next touch |
+| exit | activity, or a question |
+| escalation | L3 exhausts → hand back for a decision |
+| who | by hand |
+
+> New, and the longest stage on the board. A data room nobody opens looks exactly like one being read carefully.
+
+**F42 · Promote to Meeting 3**
+
+| Field | Value |
+|---|---|
+| trigger | The third meeting is BOOKED |
+| timing | on booking |
+| condition | — |
+| writes | Stage = Meeting 3 · Meeting Outcome = Scheduled |
+| owner | → Us · due +1 BD |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Meeting 3
+
+**F51 · Send confirmation + agenda**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Scheduled |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Agenda Sent At = now |
+| owner | → Them · due = the meeting date |
+| exit | the meeting date arrives |
+| escalation | not sent by the day before → the owner |
+| who | by hand |
+
+> Stamped, unlike today — A02 currently writes nothing, so after the fact nobody can tell whether the agenda went out.
+
+**F52 · The call is written up**
+
+| Field | Value |
+|---|---|
+| trigger | The Meet call ends and its Gemini notes are ingested |
+| timing | ≤ 15 min |
+| condition | The event has a Meet link |
+| writes | Meeting Outcome = Hosted · note on Company, Contact and deal |
+| owner | → Us · due +1 BD |
+| exit | the note is filed |
+| escalation | no notes document → flag on the Calls tab |
+| who | runs on its own |
+
+> Call Intelligence. The only step on this chart that runs on its own today.
+
+**F53 · Approve the follow-ups**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | Action items queued by the write-up |
+| timing | within 1 BD |
+| condition | — |
+| writes | CRM tasks, once approved |
+| owner | → Us · due +1 BD |
+| exit | approved or dismissed |
+| escalation | unapproved after 3 days → the owner |
+| who | approve on the Calls tab |
+
+> The expiry is new. Today an unapproved item sits in the queue for ever.
+
+**F54 · Recover a missed meeting**  → loop **L4**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = No-show, Rescheduled or Cancelled |
+| timing | immediately |
+| condition | — |
+| writes | Meeting Outcome = Scheduled once re-booked |
+| owner | → Them · due = the next touch |
+| exit | re-booked |
+| escalation | L4 exhausts → L9 |
+| who | by hand |
+
+> Cancellations now get the same four touches a no-show gets. Today they get one re-confirm and then silence.
+
+**F55 · Send the recap**
+
+| Field | Value |
+|---|---|
+| trigger | Meeting Outcome = Hosted |
+| timing | within 24 h · 09:00–17:00 |
+| condition | — |
+| writes | Recap Sent At = now |
+| owner | → Them · due +2 BD |
+| exit | they respond to it |
+| escalation | 24 h late → Escalated At = now |
+| who | by hand |
+
+**F56 · Chase the go-ahead**  → loop **L3**
+
+| Field | Value |
+|---|---|
+| trigger | Recap Sent At set ∧ the next step is not agreed |
+| timing | day 2 · 6 · 12 · 20 · 09:00–17:00 |
+| condition | — |
+| writes | Next Action Due = the next touch |
+| owner | → Them · due = the next touch |
+| exit | they agree, or they reply |
+| escalation | L3 exhausts → L9 |
+| who | by hand |
+
+> A recap is not a yes. This is the gap that used to leave a deal at Hosted with nobody owing anything.
+
+**F57 · Promote to Offer Expected**
+
+| Field | Value |
+|---|---|
+| trigger | They agree to the next piece of work |
+| timing | on their agreement |
+| condition | — |
+| writes | Stage = Offer Expected · Stage Changed At = now |
+| owner | → Us · due per the next stage's SLA |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Offer Expected
+
+**F60 · Record the expected offer**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | They confirm an offer is being prepared |
+| timing | same day |
+| condition | — |
+| writes | Stage = Offer Expected · Offer Expected By = their date |
+| owner | → Them · due = their stated date |
+| exit | the offer lands |
+| escalation | — |
+| who | by hand |
+
+> Their date, written down. Today this stage means 'waiting' with nothing recording what we are waiting for or until when.
+
+**F61 · Chase the offer**  `NEW`  → loop **L7**
+
+| Field | Value |
+|---|---|
+| trigger | Offer Expected By has passed |
+| timing | day 3 · 7 · 14 · 21 · 09:00–17:00 |
+| condition | — |
+| writes | Follow-up Date = the next touch |
+| owner | → Them · due = the next touch |
+| exit | an offer, or a pass |
+| escalation | L7 exhausts → Closed · Dropped |
+| who | by hand |
+
+> The expiry this stage has never had. It is the rung that needs one most, because waiting is its entire meaning.
+
+#### Closed
+
+**F70 · Close it out**
+
+| Field | Value |
+|---|---|
+| trigger | An offer lands, they pass, or they go dark for good |
+| timing | on the outcome |
+| condition | — |
+| writes | Stage = Closed · Outcome = Offer Received \| Passed \| Dropped · owner cleared |
+| owner | cleared |
+| exit | — |
+| escalation | — |
+| who | by hand |
+
+#### Any
+
+**F71 · The mandate ends**  `NEW`
+
+| Field | Value |
+|---|---|
+| trigger | The sell deal this Mandate points at gets a Final Decision |
+| timing | same day |
+| condition | The record is still open |
+| writes | Outcome set on every open record on that mandate · owner cleared |
+| owner | cleared |
+| exit | — |
+| escalation | anyone mid-conversation is told |
+| who | by hand |
+
+> New, and the only rule here with a real counterparty on the other end. A target in Due Diligence for a mandate that closed in March looks exactly like a live one.
 
 ---
 
-## 9. Business hours
+## 7. Migration
 
-| | Buy | Sell | Fulfillment |
-|---|---|---|---|
-| Hours | 09:00–18:00 | 08:00–17:00 | 09:00–17:00 |
+| Board | Today | Becomes | Rule | Records |
+|---|---|---|---|---|
+| buy | Stage 1 · New Lead | Lead or Qualified | Outreach Sent At empty → Lead; set → Qualified | 99 to split |
+| buy | Stages 2–6 | Intro Meeting → Pitch | One to one, in order | no change |
+| buy | Completed / Skipped | Closed | The verdict already says which; Skipped becomes Disqualified | merged |
+| buy | — | Negotiation | Forward-only. No record migrates in | 0 |
+| sell | Stage 1 · New Lead | Target, Contacted or Engaged | No outreach → Target; sent → Contacted; Replied At set → Engaged | 35 to split |
+| sell | Stages 2–6 | Intro Meeting → Pitch | One to one | no change |
+| sell | Closed Won | Closed | The verdict carries the outcome | merged |
+| fulfillment | Reached Out / Teaser | Approach or Engaged | Replied At set → Engaged | 348 to split |
+| fulfillment | Meeting 1 → Meeting 3 | unchanged | One to one | no change |
+| fulfillment | Waiting on Offer | Offer Expected | Rename, plus an expiry date | rename |
+| other | All stages | Follows Buy | 5 records, Buy's rules with Sell's verdicts | 5 |
 
-Timezone `Asia/Jakarta`, business days Monday–Friday, on all three. Offsets marked **BD** are
-business days; plain day counts are calendar days. Every scheduled touch snaps forward into the next
-open window, so nothing is timed for 02:00 on a Sunday.
+## 8. What it costs
 
----
+487 records re-staged, every board layout and saved view rebuilt, and clienttype-sync updated because it creates records at a named stage. This is the expensive option — restructuring stages moves everything that points at them. Nothing here is additive-only the way a new field would be.
 
-## 10. History — the retired rules engine
+## 9. What it does not fix
 
-**Retired 2026-08-07.** The buy-side, sell-side and fulfillment rules engines are off for good, and
-the rules above are now followed by hand. Do not resurrect them without being asked.
+Nothing here makes the CRM understand a conversation. Whether a deal is genuinely alive is still a judgement; this only guarantees somebody has been asked to make it, and that no record can sit with nothing scheduled. Call Intelligence remains the only step on any of these charts that runs on its own today.
 
-**Why.** The engine matched on stage and timestamps only. It had no idea what was actually said in a
-conversation, so its tasks were noise. It created **440 tasks** in the CRM, all deleted on
-retirement, along with the **150 field values** it had written itself — `escalatedAt`, `repliedAt`,
-the `*SentAt` stamps, `nextReachOutAt`, and the 16 `Ghosted` / 5 `Held Off` marks the sell cadence
-applied. `meetingOutcome` was kept, because it derives from real calendar events. Per-record prior
-values are in `_backups/20260807-preremoval/engine_field_footprints.tsv`.
-
-**What it was.** A Node service reconciling every 5 minutes off the CRM and ticking every 60 seconds,
-holding lead state, a job queue and a task ledger in its own SQLite database. Twenty's SSRF
-protection blocked its webhooks, so the poll was the only live path. Three parallel engines, one per
-board, routed by the automation-id prefix (`S*` sell, `F*` fulfillment, everything else buy).
-
-**Things it did that are easy to forget:**
-
-- A01/A02/A03 and the chases auto-completed when an outbound email to the contact was detected.
-  **A04 and A05 never did** — a sent email is not proof a document went out, so they were closed by
-  hand. That judgement still holds.
-- Missing an SLA stamped `escalatedAt` on the deal. That stamp *was* the escalation — the Google
-  Chat notification layer it used to ping had been deleted the day before, on 2026-08-06.
-- Calendar sync auto-wrote `meetingOutcome` (`Scheduled` / `Hosted`) when the contact's email
-  appeared in a synced calendar event, respecting any manual value other than `Scheduled`.
-
-**Task titles it produced** — useful only for recognising a leftover. Bodies carried a one-line
-`Buy-side:` / `Sell-side:` / `Fulfillment:` prefix, which is what distinguished them from Call
-Intelligence tasks.
-
-*Buy* — `Respond to new lead: {n} (intro + booking link)` · `Send confirmation + agenda: {n} (Mtg {k})` ·
-`Send recap / summary: {n} (Mtg {k})` · `Produce + send strategy doc: {n}` · `Deliver revamps: {n}` ·
-`Follow up, no booking yet: {n} (touch {i})` · `Reschedule no-show: {n} (Mtg {k})` ·
-`Follow up to rebook: {n} (touch {i})` · `Follow up to book Mtg 2: {n} (touch {i})` ·
-`Follow up to book Mtg 3: {n} (touch {i})` · `Re-engage, new thread: {n}` · `Re-engage bump: {n}` ·
-`Re-confirm rescheduled meeting: {n} (Mtg {k})` · `Reply in — review & respond: {n}`
-
-*Sell* — `Reach out to {n} (1st)` · `2nd reach-out: {n}` · `3rd reach-out: {n}` ·
-`Ghosted — re-engage (2 weeks): {n}` · `Re-engage follow-up: {n}` · `3-month re-engage: {n}` ·
-`3-month re-engage (2nd): {n}` · `Reply in — meet to understand needs: {n}`
-
-*Fulfillment* — `Follow up (no response): {n} (touch {i})` · `Keep {n} moving to the next step (touch {i})` ·
-`Re-engage: {n} (touch {i})` · `Reply in — review & respond: {n}`
-
-**Where the dormant source lives** — `Desktop/Nobridge Software/Sales Engine VM`. Buy plays
-`src/automations/registry.ts` · buy ladders `patterns.ts` · sell cadence `sellPatterns.ts` ·
-fulfillment ladder `fulfillmentPatterns.ts` · stage tables `src/core/stateMachine.ts` and its sell
-and fulfillment siblings · completion stamps `src/core/taskManager.ts` · business hours
-`src/config.ts`. That container now runs **Call Intelligence only**.
-
-Historical engine state — lead states, job queue, task ledger, bucket history — was exported to JSON
-before the wipe and lives with the retirement backups, **outside this repo**, since it contains
-contact names and email addresses.

@@ -40,6 +40,12 @@ nobridge-crm-secrets-PASSWORD*
 /.crm-migrate-seller/lastcontact.txt
 /.crm-migrate-seller/lastcontact.sql
 /.crm-sales-engine/stage_migration_manifest.json
+# v2 migration rollback state — same class as the stage_migration_manifest above. The scripts are
+# worth sharing; what they did to this one workspace (449 record ids and their previous stages) is
+# local operational state. NOTE: these files are the ONLY way to reverse 01-04 and 07 — they are
+# gitignored, not disposable. Do not clear .crm-migrate-v2/manifests/ to "tidy up".
+/.crm-migrate-v2/manifests/
+/.crm-migrate-v2/VERIFIED
 *.log
 *.xlsx
 *.csv

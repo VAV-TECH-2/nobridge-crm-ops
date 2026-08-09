@@ -34,11 +34,18 @@ LOG = "/home/azureuser/clienttype-sync.log"
 DB = ["docker", "exec", "-i", "twenty-db-1", "psql", "-U", "postgres", "-d", "default"]
 
 OPP_FAMILY = {"BUY_SIDE", "SELL_SIDE", "OTHERS"}
+# `stage` is the FIRST stage of each board's pipeline — what a freshly tagged company enters on.
+# Updated 2026-08-09 for the v2 migration (CRM/.crm-migrate-v2/): the old NEW_LEAD and REACHED_OUT
+# options were removed by 06_remove_old.py, and creating with a value that no longer exists fails
+# the whole mutation, so tagging a company produced nothing. NETWORK is unchanged on purpose —
+# `networking` was out of scope for v2 and still has REACHED_OUT as its first stage.
+# If a board's first stage is renamed in .crm-automations/dashboard/workflow_spec.py, change it here
+# too; there is nothing that checks these agree.
 SEG = {
-    "BUY_SIDE":    {"table": "_buyOpportunity",   "col": "targetBuyOpportunityId",   "create": "createBuyOpportunity",   "stage": "NEW_LEAD"},
-    "SELL_SIDE":   {"table": "_sellOpportunity",  "col": "targetSellOpportunityId",  "create": "createSellOpportunity",  "stage": "NEW_LEAD"},
-    "OTHERS":      {"table": "_otherOpportunity", "col": "targetOtherOpportunityId", "create": "createOtherOpportunity", "stage": "NEW_LEAD"},
-    "FULFILLMENT": {"table": "_fulfillment",      "col": "targetFulfillmentId",      "create": "createFulfillment",      "stage": "REACHED_OUT"},
+    "BUY_SIDE":    {"table": "_buyOpportunity",   "col": "targetBuyOpportunityId",   "create": "createBuyOpportunity",   "stage": "LEAD"},
+    "SELL_SIDE":   {"table": "_sellOpportunity",  "col": "targetSellOpportunityId",  "create": "createSellOpportunity",  "stage": "TARGET"},
+    "OTHERS":      {"table": "_otherOpportunity", "col": "targetOtherOpportunityId", "create": "createOtherOpportunity", "stage": "LEAD"},
+    "FULFILLMENT": {"table": "_fulfillment",      "col": "targetFulfillmentId",      "create": "createFulfillment",      "stage": "APPROACH"},
     "NETWORK":     {"table": "_networking",       "col": "targetNetworkingId",       "create": "createNetworking",       "stage": "REACHED_OUT"},
 }
 MORPH = ["attachment", "noteTarget", "taskTarget", "timelineActivity"]
