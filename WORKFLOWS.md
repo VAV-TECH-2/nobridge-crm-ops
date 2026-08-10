@@ -8,11 +8,13 @@
 >
 > Edit the spec and regenerate. Until 2026-08-09 this document, the two chart tabs and the dashboard's step list were four hand-kept copies of one ruleset, and this file had to warn you twice that nothing checked they agreed. They are now one source.
 
-> ## ⚠ The CRM has not been migrated yet.
+> ## ✅ This is what is live in the CRM.
 
-> The boards still carry the old six stages. Several stages named below — **Qualified**, **Negotiation**, **Target**, **Engaged**, **Offer Expected** — do not exist on any board today, and the fields marked NEW are not there either. What is actually live is preserved at [`_archive/WORKFLOWS-pre-v2.md`](./_archive/WORKFLOWS-pre-v2.md) and stays true until `.crm-migrate-v2` is applied. Use that file to work a deal today; use this one to understand where the pipeline is going.
+> Applied on 9 August 2026. Every stage named below exists on the boards, with these names and in this order, and the fields marked NEW were created with it. Work a deal from this document. [`_archive/WORKFLOWS-pre-v2.md`](./_archive/WORKFLOWS-pre-v2.md) describes the old six-stage boards and is history — do not work from it.
 
-> **What is changing, in plain language:** [`MIGRATION.md`](./MIGRATION.md) — which stages move, where every deal lands, and what to do differently. The runbook for whoever applies it is [`.crm-migrate-v2/RUNBOOK.md`](./.crm-migrate-v2/RUNBOOK.md).
+> Two things this document does not cover, both deliberate. Nothing fills in **Next Owner** or **Next Action Due** for you: the loops below are worked by hand, and that is the point of the change rather than an omission. And a deal created without a stage now arrives with none — the boards' default was removed to retire the old options, so pick a stage when you create one.
+
+> **What changed and why, in plain language:** [`MIGRATION.md`](./MIGRATION.md). What was actually run, including the three things that only failed on the first apply: [`.crm-migrate-v2/RUNBOOK.md`](./.crm-migrate-v2/RUNBOOK.md).
 
 Three pipelines redrawn: stages split where one stage was doing two jobs, a Negotiation stage where today there is nothing between the pitch and the close, and every chase written as a named loop with its parameters on the face of it.
 
@@ -2278,7 +2280,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 
 ## 8. What it costs
 
-487 records re-staged, every board layout and saved view rebuilt, and clienttype-sync updated because it creates records at a named stage. This is the expensive option — restructuring stages moves everything that points at them. Nothing here is additive-only the way a new field would be.
+What it cost, now that it has been paid: 449 of 487 records re-staged, 45 fields created, 19 old stage options removed, and clienttype-sync updated because it creates records at a named stage — it stopped creating anything at all until it was. Restructuring stages moves everything that points at them, and three of the six migration steps were rejected on their first run; see CRM/.crm-migrate-v2/RUNBOOK.md §5. Still outstanding: no saved views use the new fields, and the four phase-2 field changes in §7 of that runbook are untouched.
 
 ## 9. What it does not fix
 
