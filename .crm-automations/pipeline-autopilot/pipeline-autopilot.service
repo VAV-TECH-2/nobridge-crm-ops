@@ -1,0 +1,27 @@
+[Unit]
+Description=Pipeline Autopilot — email, meetings and calls into the CRM records
+Documentation=https://node.nobridge.co/#automations|key=pipeline-autopilot
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nobridge-pipeline-autopilot
+# The spec is the deployed dashboard's copy, so both read exactly one ruleset.
+Environment=AUTOPILOT_SPEC_DIR=/opt/heydeal-automations-dashboard
+Environment=AUTOPILOT_DB=/opt/nobridge-pipeline-autopilot/data/autopilot.db
+Environment=AUTOPILOT_LOG=/home/azureuser/pipeline-autopilot.log
+# Ceilings, deliberately conservative for the first weeks of running. Raise once a few days of
+# runs look right; the point of a low cap is that a bad prompt cannot spend the afternoon.
+Environment=AUTOPILOT_MAX_LLM_CALLS_PER_RUN=40
+Environment=AUTOPILOT_JUDGE_WORKERS=5
+Environment=AUTOPILOT_BREAKER_ABS=25
+Environment=AUTOPILOT_BREAKER_PCT=0.15
+ExecStart=/usr/bin/python3 /opt/nobridge-pipeline-autopilot/autopilot.py --apply
+# One run must never overlap the next: they would both plan from the same watermark and write the
+# same changes twice. An hour is far longer than a normal run (a few minutes) and shorter than the
+# gap between them.
+TimeoutStartSec=2700
+
+[Install]
+WantedBy=multi-user.target

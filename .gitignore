@@ -50,6 +50,29 @@ nobridge-crm-secrets-PASSWORD*
 *.xlsx
 *.csv
 
+# --- pipeline-autopilot local state ----------------------------------------
+# THIS REPO IS PUBLIC. autopilot.db is the audit trail, and its `decisions.evidence_json` holds the
+# subjects and bodies of real client email plus the model's reasoning about named companies. That is
+# PII and it must never be committed. The scripts are worth sharing; what this one workspace's deals
+# said to each other is not. Same reasoning as the migration manifests above: gitignored, NOT
+# disposable — autopilot.db is the only record of what was changed and the only way to revert it.
+/.crm-automations/pipeline-autopilot/data/
+/.crm-automations/pipeline-autopilot/*.db
+/.crm-automations/pipeline-autopilot/*.db-wal
+/.crm-automations/pipeline-autopilot/*.db-shm
+
+# --- ai-access local state --------------------------------------------------
+# aiaccess.db holds TOKEN HASHES and the request log, and the request log stores the arguments each
+# tool was called with — which will contain fragments of client email as soon as anybody pastes one
+# into a chat. Same rule as autopilot.db: gitignored, not disposable. It is also the only record of
+# who asked the CRM what. The deal writes an AI made are NOT here; they are in autopilot.db, so that
+# one revert tool undoes both.
+/.crm-automations/ai-access/data/
+/.crm-automations/ai-access/*.db
+/.crm-automations/ai-access/*.db-wal
+/.crm-automations/ai-access/*.db-shm
+/.crm-automations/ai-access/ai-access.env
+
 # --- Oversized / stale artifacts (GitHub hard limit is 100 MB per file) -----
 /.deploy-tmp/
 /deploy/finance/_artifact/

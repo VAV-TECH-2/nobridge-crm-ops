@@ -67,7 +67,7 @@ Every chase, re-engagement and SLA as one named object, defined once and used wh
 | entry | Stage = Lead ∧ Qualified is empty |
 | exit | qualified, or disqualified |
 | on reply | owner → Us · due +1 BD |
-| on exhaust | → Closed · Disqualified — no answer to a screening question is an answer |
+| on exhaust | → L9 · Ghosted, re-engage in 90 days — silence is not a disqualification |
 | escalation | day 7 → the owner's manager |
 | used by | buy · sell · fulfillment |
 | today | NEW — nothing screens a lead today |
@@ -139,7 +139,7 @@ Every chase, re-engagement and SLA as one named object, defined once and used wh
 | on reply | owner → Us · due +1 BD |
 | on exhaust | → Closed · No Decision Made |
 | escalation | day 14 → the owner's manager |
-| used by | buy · sell |
+| used by | buy · sell · fulfillment |
 | today | NEW — there is no Negotiation stage today |
 
 ### L8 · Signature chase
@@ -245,7 +245,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | trigger | A company is tagged Client Type = Buy side |
 | timing | ~2 min |
 | condition | — |
-| writes | Stage = Lead · Stage Changed At = now · Source |
+| writes | Stage = Lead · Stage Changed At = now |
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
@@ -277,7 +277,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | qualified or disqualified |
 | escalation | L2 — day 1 · 3 · 7, then Disqualified |
-| who | by hand |
+| who | runs on its own |
 
 > New. Today a lead and a qualified lead are the same stage, which is why the board cannot tell you how many real opportunities are open.
 
@@ -292,7 +292,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Qualified
 
@@ -333,7 +333,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > The BOOKING promotes; the call note records what happened to it. Two events, two moments, two fields.
 
@@ -438,7 +438,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Strategy
 
@@ -496,7 +496,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Strategy Review
 
@@ -599,7 +599,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Revamps
 
@@ -657,7 +657,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Pitch
 
@@ -760,7 +760,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Negotiation
 
@@ -829,7 +829,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Closed
 
@@ -844,7 +844,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 **B92 · No Decision Made**
 
@@ -857,7 +857,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Reached only through a loop that actually ran. That is the whole meaning of the value, and it is why 40 buy deals carrying it at Stage 1 are wrong.
 
@@ -865,14 +865,14 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 
 | Field | Value |
 |---|---|
-| trigger | Screening failed, or L2 ran out |
+| trigger | Screening failed |
 | timing | on judgement |
 | condition | — |
 | writes | Final Decision = Disqualified · Close Date = now |
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Replaces the Skipped stage. A verdict, not a position — which is what it always was.
 
@@ -887,7 +887,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — terminal, and never re-entered |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > The only verdict here with a consequence outside the CRM. It must never feed L10, and today it has no field at all on Sell.
 
@@ -919,7 +919,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | somebody answers it |
 | escalation | unanswered 2 BD → the owner |
-| who | by hand |
+| who | runs on its own |
 
 > The handover is the new part. Today a reply cancels every scheduled touch and schedules nothing back, which makes it the most dangerous event on the board.
 
@@ -934,7 +934,7 @@ Business hours 09:00–18:00 Asia/Jakarta, Monday to Friday.
 | owner | → Them · due +90 days |
 | exit | L9 re-engages it |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Every loop feeds this, not just the cold one. That is the single biggest difference from today.
 
@@ -972,7 +972,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | trigger | A company is tagged Client Type = Sell side |
 | timing | ~2 min |
 | condition | — |
-| writes | Stage = Target · Stage Changed At = now · Source |
+| writes | Stage = Target · Stage Changed At = now |
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
@@ -1051,7 +1051,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | a meeting is booked |
 | escalation | unanswered 2 BD → the owner |
-| who | by hand |
+| who | runs on its own |
 
 > Engaged is a position now, not a timestamp. A seller who answers and then drifts is currently in a worse place than one who ignored us, because the one who ignored us is still on a ladder.
 
@@ -1066,7 +1066,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +2 BD |
 | exit | qualified or disqualified |
 | escalation | L2 |
-| who | by hand |
+| who | runs on its own |
 
 **S08 · Chase for the intro meeting**  `NEW`  → loop **L1**
 
@@ -1092,7 +1092,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Intro Meeting
 
@@ -1195,7 +1195,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Strategy
 
@@ -1253,7 +1253,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Strategy Review
 
@@ -1356,7 +1356,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Revamps
 
@@ -1414,7 +1414,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Pitch
 
@@ -1517,7 +1517,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Negotiation
 
@@ -1586,7 +1586,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Closed
 
@@ -1601,7 +1601,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 **S92 · No Decision Made**
 
@@ -1614,7 +1614,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Reached only through a loop that actually ran. That is the whole meaning of the value, and it is why 40 buy deals carrying it at Stage 1 are wrong.
 
@@ -1622,14 +1622,14 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 
 | Field | Value |
 |---|---|
-| trigger | Screening failed, or L2 ran out |
+| trigger | Screening failed |
 | timing | on judgement |
 | condition | — |
 | writes | Final Decision = Disqualified · Close Date = now |
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Replaces the Skipped stage. A verdict, not a position — which is what it always was.
 
@@ -1644,7 +1644,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — terminal, and never re-entered |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > The only verdict here with a consequence outside the CRM. It must never feed L10, and today it has no field at all on Sell.
 
@@ -1676,7 +1676,7 @@ Business hours 08:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Them · due +90 days |
 | exit | L9 re-engages it |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 ---
 
@@ -1771,7 +1771,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | a meeting is booked |
 | escalation | unanswered 2 BD → the owner |
-| who | by hand |
+| who | runs on its own |
 
 **F06 · Qualify the interest**  `NEW`  → loop **L2**
 
@@ -1784,7 +1784,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +2 BD |
 | exit | qualified or dropped |
 | escalation | L2 |
-| who | by hand |
+| who | runs on its own |
 
 **F07 · Promote to Meeting 1**
 
@@ -1797,7 +1797,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 > Meeting Outcome does not exist on this board today, so a fulfillment no-show has no state and no recovery.
 
@@ -1902,7 +1902,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### NDA
 
@@ -1945,7 +1945,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Meeting 2
 
@@ -2048,7 +2048,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Due Diligence
 
@@ -2091,7 +2091,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due +1 BD |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Meeting 3
 
@@ -2194,7 +2194,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | → Us · due per the next stage's SLA |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Offer Expected
 
@@ -2241,7 +2241,7 @@ Business hours 09:00–17:00 Asia/Jakarta, Monday to Friday.
 | owner | cleared |
 | exit | — |
 | escalation | — |
-| who | by hand |
+| who | runs on its own |
 
 #### Any
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the Pipeline Autopilot every hour
+
+[Timer]
+OnCalendar=hourly
+# Two minutes of jitter keeps this off the exact top of the hour, where clienttype-sync and
+# blocklist-guard both land on their 2-minute timers. All three share Twenty's 100-request-per-60s
+# workspace-wide rate limit, so colliding costs everyone retries.
+RandomizedDelaySec=120
+# A missed hour (a reboot, a deallocate) runs once on the way back up rather than being skipped.
+Persistent=true
+AccuracySec=30s
+Unit=pipeline-autopilot.service
+
+[Install]
+WantedBy=timers.target

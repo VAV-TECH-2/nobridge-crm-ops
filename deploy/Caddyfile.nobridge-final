@@ -61,14 +61,37 @@ fin.nobridge.co {
     }
 }
 
-# Nobridge Automations — ops dashboard.
+# Nobridge Automations — ops dashboard + AI Access connector.
 node.nobridge.co {
     encode zstd gzip
+
+    # No OAuth server lives here. An MCP client probes discovery + dynamic client
+    # registration BEFORE connecting, and anything other than a 404 makes it believe
+    # it must sign in: the dashboard would answer these with a 302 to /login, and
+    # /login is 200 text/html, which is exactly what broke fin.nobridge.co on
+    # 2026-07-28 (see that block's comment). A bare 404 sends the client to the
+    # token in the URL, which is what /ai/mcp/<token> actually uses.
+    @oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openid-configuration* /register
+    handle @oauth_probe {
+        respond 404
+    }
+
+    # AI Access — the CRM connector for Claude (MCP, token in the path) and ChatGPT
+    # (Bearer). Its own token auth and its own port; deliberately NOT the dashboard,
+    # which is read-only by design and Google-SSO'd. Live 2026-08-11.
+    handle /ai/* {
+        request_body {
+            max_size 1MB
+        }
+        reverse_proxy 127.0.0.1:3300
+    }
 
     # The ops MCP connector was REMOVED 2026-08-07 with the pipeline engines. Old
     # /mcp/<token> connector URLs are dead — answer 404 rather than falling through
     # to the dashboard, which would serve its HTML login page and make a stale
     # Claude connector fail with a confusing sign-in error instead of a clean 404.
+    # Its replacement is /ai/* above, on a new path on purpose: every link handed
+    # out before that retirement stays dead.
     handle /mcp/* {
         respond 404
     }

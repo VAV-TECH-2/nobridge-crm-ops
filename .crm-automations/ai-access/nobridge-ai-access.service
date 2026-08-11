@@ -1,0 +1,34 @@
+[Unit]
+Description=Nobridge AI Access — CRM connector for Claude and ChatGPT
+Documentation=https://node.nobridge.co/#automations|key=ai-access
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# root, like the ops dashboard: it needs the engine .env (the Twenty API key) and `docker exec` into
+# twenty-db-1 for the read-only bulk queries.
+User=root
+WorkingDirectory=/opt/nobridge-ai-access
+Environment=PYTHONUNBUFFERED=1
+Environment=AI_ACCESS_PORT=3300
+Environment=AI_ACCESS_BIND=127.0.0.1
+# The autopilot's modules are imported, not copied: one CRM client, one validator, one audit trail.
+Environment=AI_AUTOPILOT_DIR=/opt/nobridge-pipeline-autopilot
+# ...and through them, ONE ruleset. This is the deployed dashboard's workflow_spec.py, the same file
+# the autopilot reads and WORKFLOWS.md is generated from. If this points somewhere stale, the
+# connector answers questions from rules nobody is following.
+Environment=AUTOPILOT_SPEC_DIR=/opt/heydeal-automations-dashboard
+Environment=AUTOPILOT_DB=/opt/nobridge-pipeline-autopilot/data/autopilot.db
+Environment=AI_ACCESS_DB=/opt/nobridge-ai-access/data/aiaccess.db
+# Optional overrides (roles allowed, bootstrap allowlist) live here if it exists.
+EnvironmentFile=-/opt/nobridge-ai-access/ai-access.env
+ExecStartPre=/usr/bin/python3 /opt/nobridge-ai-access/selfcheck.py
+ExecStart=/usr/bin/python3 /opt/nobridge-ai-access/server.py
+Restart=always
+RestartSec=5
+# A blocker in selfcheck fails ExecStartPre and the unit will not come up. That is deliberate: a
+# connector serving a stale ruleset is worse than one that is down, because nothing looks wrong.
+
+[Install]
+WantedBy=multi-user.target

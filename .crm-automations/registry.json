@@ -18,6 +18,24 @@
     "recordId": null
   },
   {
+    "key": "pipeline-autopilot",
+    "name": "Deals Update Themselves",
+    "unit": "pipeline-autopilot",
+    "scriptPath": "/opt/nobridge-pipeline-autopilot/autopilot.py",
+    "schedule": "Hourly",
+    "description": "Reads the email, meetings and call notes the CRM already syncs and updates the deals itself — stage, contact dates, who owes the next move, when it is due, and a note when something happened. It takes its rules from the same file the Workflow tab is drawn from, and every change it makes can be undone.",
+    "recordId": null
+  },
+  {
+    "key": "ai-access",
+    "name": "Ask the CRM (Claude / ChatGPT)",
+    "unit": "nobridge-ai-access",
+    "scriptPath": "/opt/nobridge-ai-access/server.py",
+    "schedule": "Always on",
+    "description": "Lets you ask the CRM where a deal is and what should happen next, and tell it to make changes, from Claude or a ChatGPT custom GPT. It is handed the whole workflow before it answers, and every change it writes is checked by the same rules the hourly automation obeys and can be undone.",
+    "recordId": null
+  },
+  {
     "key": "call-intelligence",
     "name": "Call Notes into the CRM",
     "scriptPath": "src/callintel/reconciler.ts (in nobridge-sales-engine)",
@@ -34,19 +52,6 @@
     "scriptPath": "/usr/local/bin/twenty-backup.sh",
     "schedule": "Nightly 03:15",
     "description": "Takes a complete copy of the CRM database at 03:15 each night and keeps the last 14 days. This is the only backup of your CRM: if it stops, there is no second copy.",
-    "recordId": null
-  },
-  {
-    "key": "last-contacted-refresh",
-    "name": "“Last Contacted” Updater",
-    "watchPath": [
-      "/home/azureuser/last-contacted.log",
-      "/home/azureuser/last-contacted-fulfillment.log"
-    ],
-    "maxAgeHours": 30,
-    "scriptPath": "/home/azureuser/refresh-last-contacted.sql",
-    "schedule": "Nightly 06:30 and 06:35",
-    "description": "Every morning it works out when you last exchanged email with each company and writes it onto the deal in plain words — today, 3 days ago, no contact logged. It only runs overnight, so today's emails show up tomorrow.",
     "recordId": null
   },
   {
