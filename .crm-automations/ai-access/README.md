@@ -133,19 +133,36 @@ this needs.
   read anything else as "sign in here" — the failure `fin.nobridge.co` hit on 2026-07-28. Caddy
   answers them 404 for this host and so does this server.
 
-## A spec problem this surfaced
+## A spec problem this surfaced, and how it was fixed
 
 `sets` in `workflow_spec.py` does double duty: it is both *what a step writes* and *the allowlist of
-fields writable at that stage*. So two steps list a field belonging to a **later** event:
+fields writable at that stage* (`rules.allowed_fields()` builds from its keys). So a stage has to
+authorise every field any event in it might touch — including events happening **later** than the step
+being described. Two of those were written as `now`, which claims the step stamps them:
 
-| step | prose | `sets` |
+| step | prose said | `sets` also claimed |
 |---|---|---|
-| B74/S74 Out for signature | `Signature Sent At = now · Contract Signed At on return` | also `contractSignedAt: now` |
-| B32/B52/S32/S52 Deliver the … | `Strategy Sent At = now` | also `escalatedAt: now` |
+| B74/S74 Out for signature | `Signature Sent At = now · Contract Signed At **on return**` | `contractSignedAt: now` |
+| B32/B52/S32/S52 Deliver the … | `Strategy Sent At = now` (no mention) | `escalatedAt: now` |
 
-Applied literally, stamping "out for signature" would mark the contract **signed**. `guard.py`
-reads the prose to tell "this event" from "a later event" and reports the rest instead of writing it
-(see `_valued_in_prose`). The honest fix is in the spec — give `sets` a way to say *authorised here,
-set elsewhere* — but that is a rules change, not a connector change, so it is written up rather than
-done unilaterally. The autopilot is unaffected: its judge layer hides computed fields from the model,
-so nothing ever set those.
+Applied literally, stamping "out for signature" would have marked the contract **signed**.
+
+**Fixed 2026-08-12 in the spec, where it belonged**, by adding a seventh value kind: **`"allow"`** —
+*writable at this stage, but not written by this step*. That is the thing `sets` previously could not
+say. Because `allowed_fields()` reads keys only, the allowlist half is preserved for free: a person or
+this connector can still set those fields deliberately, and `stamp_step` no longer touches them.
+
+Two traps were handled on the way, both worth knowing if a kind is ever added again:
+
+- **`judge._writable_text` is a denylist**, so a new kind is *shown* to the model by default and would
+  pass validation (the field is in the allowlist by definition). `"allow"` had to be added to that
+  filter, which is what makes this a zero-behaviour-change fix rather than the opposite of one.
+- **`preflight.KIND_TYPES.get(kind)` returning `None` silently skips the type check**, and is
+  indistinguishable from the deliberate `None` used by `judge`/`clear`. `"allow": None` is written out
+  explicitly for that reason.
+
+`guard.py` no longer parses prose — the heuristic that stood in for this is gone. `preflight.py` now
+carries the check instead, as a warning: *a step that stamps a field its own description does not
+mention probably means `allow`*. It is gated on `now` only, because the prose is deliberately an
+incomplete description — a step's due date is declared in its `owner` column, not in `writes`, which
+is precisely why prose was the wrong thing for the write path to depend on.

@@ -157,6 +157,33 @@ def check():
                         "%s: %s sets %s = %r but %s is a %s field, not %s"
                         % (side, sid, fname, value, fname, meta["type"], "/".join(allowed)))
 
+        # 3b. Does each step's `sets` agree with its own prose about what it STAMPS?
+        #
+        # `sets` does double duty - what a step writes, AND the allowlist for that stage - so a step
+        # has to list fields belonging to events that happen LATER in the same stage. Marked "now",
+        # such a field reads as "this step stamps it", and something eventually will: B74 "Out for
+        # signature" listed contractSignedAt as "now", which meant recording the send marked the
+        # contract SIGNED. "allow" is how a field says authorised-but-not-by-me; this is the check
+        # that notices the next time somebody reaches for "now" instead.
+        #
+        # The prose is the tell: a clause with a value ("Signature Sent At = now") is this event, one
+        # without ("Contract Signed At on return") is not. It is a WARNING and not a blocker because
+        # prose is an incomplete description on purpose - a step's due date is declared in its `owner`
+        # column, not in `writes` - so this is gated on "now" only. Widening it to "offset" would fire
+        # on five steps whose nextActionDue is perfectly correct.
+        for step in spec.steps(pipe):
+            claimed = {spec.api_name(lbl) for lbl, val in spec.writes_fields(step)
+                       if val is not None}
+            for fname, value in spec.step_sets(step).items():
+                if fname in ("stage", "stageChangedAt") or fname not in live:
+                    continue
+                if spec.value_spec(value)[0] != "now" or fname in claimed:
+                    continue
+                report["warnings"].append(
+                    "%s: %s stamps %s = now, but its own description (%r) does not say so - if that "
+                    "field belongs to a later event, mark it \"allow\" instead"
+                    % (side, step["id"], fname, step.get("writes")))
+
         # Step anchors: a loop's timing counts from one of these, so a bad one silently mis-times a
         # whole ladder rather than failing loudly.
         for step in spec.steps(pipe):

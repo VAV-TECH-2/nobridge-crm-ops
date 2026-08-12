@@ -78,38 +78,6 @@ def proposal(stage=None, fields=None, reason=None):
     return p
 
 
-def _valued_in_prose(step):
-    """API names of the fields a step's own prose says it SETS, as opposed to merely mentions.
-
-    This distinction is load-bearing and the spec makes it in the prose but not in `sets`. `sets`
-    doubles as the per-stage write ALLOWLIST (rules.allowed_fields is built from it), so a step lists
-    every field that may legally be written while it is current — including fields belonging to a
-    LATER event in the same stage. Two shapes in the live spec:
-
-        B74/S74 "Out for signature"
-            writes: "Signature Sent At = now · Contract Signed At on return"
-            sets:   {"signatureSentAt": "now", "contractSignedAt": "now", ...}
-        B32/B52/S32/S52 "Deliver the …"
-            writes: "Strategy Sent At = now"
-            sets:   {"strategySentAt": "now", "escalatedAt": "now"}
-
-    Applying `sets` literally would mark a contract signed the moment it went out for signature, and
-    stamp a deliverable as escalated on the day it was delivered. The prose is unambiguous where
-    `sets` is not: a clause with a value ("X = now", "X = now when settled") is this event, and a
-    clause without one ("Contract Signed At on return") names a field this step does not set. So
-    stamp_step trusts the prose for `now` fields and reports the rest instead of writing them.
-
-    This is a spec-quality problem, not a connector one — the honest fix is to give `sets` a way to
-    say "authorised here but set elsewhere" — but reading the prose closes the hazard without
-    silently rewriting a business rule from a tool that only consumes it.
-    """
-    out = set()
-    for label, value in spec.writes_fields(step):
-        if value is not None:
-            out.add(spec.api_name(label))
-    return out
-
-
 def resolve_sets(side, rec, step, overrides=None, now=None):
     """Turn one workflow step's `sets` into concrete values.
 
@@ -119,7 +87,8 @@ def resolve_sets(side, rec, step, overrides=None, now=None):
 
     Returns (fields, stage, notes). `stage` is separated out because a stage change has to go through
     the one-forward clamp rather than in with the field updates. Anything the spec leaves to
-    judgement (`judge`) is not invented: it is reported in `notes` unless `overrides` supplies it.
+    judgement (`judge`), or marks as belonging to a later event (`allow`), is not invented: it is
+    reported in `notes` unless `overrides` supplies it.
     """
     now = now or bizdays.now()
     live = crm.fields(side)
@@ -129,7 +98,6 @@ def resolve_sets(side, rec, step, overrides=None, now=None):
     out, notes = {}, []
     stage = None
 
-    valued = _valued_in_prose(step)
     sets = spec.step_sets(step)
     # Two passes, and the order matters: a `loop_next` due date counts from an anchor this very step
     # is usually setting (B74 stamps signatureSentAt and dates the L8 chase from it). Resolving in
@@ -152,11 +120,14 @@ def resolve_sets(side, rec, step, overrides=None, now=None):
                          % (step["id"], field, side))
             continue
         kind, payload = spec.value_spec(vspec)
-        # See _valued_in_prose: a bare `now` the prose does not claim belongs to a later event.
-        if kind == "now" and field not in valued:
-            notes.append("`%s` is authorised at this stage but step %s does not set it — its own "
-                         "description says \"%s\". Not written. Pass it in `fields` if you really "
-                         "mean it." % (field, step["id"], step.get("writes")))
+        if kind == "allow":
+            # The stage authorises this field but the event that fills it has not happened. B74 lists
+            # contractSignedAt because the counterparty signs days after the document goes out;
+            # stamping it here would mark the contract signed on the day it was sent.
+            notes.append("`%s` is authorised at this stage but step %s does not set it — the spec "
+                         "marks it as belonging to a later event (\"%s\"). Not written. Pass it in "
+                         "`fields` when that event actually happens."
+                         % (field, step["id"], step.get("writes")))
             continue
         if kind == "now":
             dt = now

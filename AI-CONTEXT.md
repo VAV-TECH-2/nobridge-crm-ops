@@ -5,7 +5,7 @@ half comes from the live metadata API and the workflow half from
 `.crm-automations/dashboard/workflow_spec.py`, the same file `WORKFLOWS.md` and the
 pipeline autopilot read.
 
-Fingerprint `75289090a9baca4a`
+Fingerprint `7c384800cd110fad`
 
 
 
@@ -664,7 +664,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`B01`) 
 - **timing** 10 days from the stage move · 09:00–18:00
 - **only if** Scope agreed
 - **writes** Strategy Sent At = now
-- **fields** `escalatedAt`=now · `strategySentAt`=now
+- **fields** `escalatedAt`=allow · `strategySentAt`=now
 - **then owned by** → Us · due = the SLA
 - **done when** it goes out
 - **escalates** L5 — Escalated At at day 10, manager at day 13
@@ -804,7 +804,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`B01`) 
 - **timing** 7 days from the stage move · 09:00–18:00
 - **only if** Scope agreed
 - **writes** Revamp Sent At = now
-- **fields** `escalatedAt`=now · `revampSentAt`=now
+- **fields** `escalatedAt`=allow · `revampSentAt`=now
 - **then owned by** → Us · due = the SLA
 - **done when** it goes out
 - **escalates** L5 — Escalated At at day 7, manager at day 10
@@ -968,7 +968,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`B01`) 
 - **when** Terms Agreed At set
 - **timing** day 2 · 5 · 10 · 20 · 09:00–18:00
 - **writes** Signature Sent At = now · Contract Signed At on return
-- **fields** `contractSignedAt`=now · `nextActionDue`=loop_next · `signatureSentAt`=now
+- **fields** `contractSignedAt`=allow · `nextActionDue`=loop_next · `signatureSentAt`=now
 - **then owned by** → Them · due = the next touch
 - **done when** signed
 - **escalates** day 10 → the owner's manager
@@ -1312,7 +1312,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`S01`) 
 - **timing** 10 days from the stage move · 08:00–17:00
 - **only if** Scope agreed
 - **writes** Strategy Sent At = now
-- **fields** `escalatedAt`=now · `strategySentAt`=now
+- **fields** `escalatedAt`=allow · `strategySentAt`=now
 - **then owned by** → Us · due = the SLA
 - **done when** it goes out
 - **escalates** L5 — Escalated At at day 10, manager at day 13
@@ -1452,7 +1452,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`S01`) 
 - **timing** 7 days from the stage move · 08:00–17:00
 - **only if** Scope agreed
 - **writes** Revamp Sent At = now
-- **fields** `escalatedAt`=now · `revampSentAt`=now
+- **fields** `escalatedAt`=allow · `revampSentAt`=now
 - **then owned by** → Us · due = the SLA
 - **done when** it goes out
 - **escalates** L5 — Escalated At at day 7, manager at day 10
@@ -1616,7 +1616,7 @@ Steps whose stage is **Any** fire wherever the deal is. Every step's id (`S01`) 
 - **when** Terms Agreed At set
 - **timing** day 2 · 5 · 10 · 20 · 08:00–17:00
 - **writes** Signature Sent At = now · Contract Signed At on return
-- **fields** `contractSignedAt`=now · `nextActionDue`=loop_next · `signatureSentAt`=now
+- **fields** `contractSignedAt`=allow · `nextActionDue`=loop_next · `signatureSentAt`=now
 - **then owned by** → Them · due = the next touch
 - **done when** signed
 - **escalates** day 10 → the owner's manager

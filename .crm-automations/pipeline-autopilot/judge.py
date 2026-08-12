@@ -216,7 +216,12 @@ def _writable_text(side, record):
         if not meta or field == "stage":
             continue
         kind, _p = spec.value_spec(vspec)
-        if kind in ("now", "loop_next", "offset"):
+        # This filter is a DENYLIST, so anything not named here is offered to the model - and would
+        # then pass validate(), because the field is in the allowlist by definition. A new value kind
+        # must be considered here or it silently becomes model-writable. "allow" means the field
+        # belongs to a later event (a contract signed days after it went out), so the model must not
+        # be invited to guess it.
+        if kind in ("now", "loop_next", "offset", "allow"):
             continue        # computed deterministically; the model must not supply these
         t = meta["type"]
         detail = ("one of: " + " ".join(meta["options"])) if meta["options"] else t

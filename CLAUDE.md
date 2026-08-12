@@ -102,13 +102,25 @@ Rules for anyone touching it:
 - **It never sends email either.** The unlock is that the same AI holds your mailbox: send there,
   stamp the CRM here. It cannot see cold outreach, same blind spot as the autopilot.
 
-**One spec problem it surfaced and did not fix:** `sets` doubles as *what a step writes* and *the
-allowlist for that stage*, so B74/S74 ("Out for signature") list `contractSignedAt: now` and
-B32/B52/S32/S52 list `escalatedAt: now` — fields belonging to a *later* event. Applied literally,
-stamping "out for signature" would mark the contract signed. `guard.py` reads the step's prose to tell
-the two apart (`_valued_in_prose`) and reports the rest instead of writing it. The real fix is in the
-spec — a way to say *authorised here, set elsewhere* — and that is a rules change, so it is written up,
-not done unilaterally. The autopilot was never affected.
+**A spec problem it surfaced, fixed 2026-08-12 — `sets` has a seventh value kind, `"allow"`.**
+`sets` doubles as *what a step writes* and *the allowlist for that stage*, so a stage must authorise
+fields belonging to events that happen **later** in it. Two were written as `now`: B74/S74 ("Out for
+signature") claimed `contractSignedAt`, and B32/B52/S32/S52 claimed `escalatedAt`. Applied literally,
+stamping "out for signature" marked the contract **signed**. `"allow"` means *writable here, not
+written by this step*; since `rules.allowed_fields()` reads keys only, the allowlist survives untouched
+and a deliberate `update_deal` can still set those fields.
+
+Rules for anyone adding another value kind — both of these were traps:
+- **`judge._writable_text` is a DENYLIST** (`judge.py`). Anything not named in it is offered to the
+  model, and passes `validate()` because the field is in the allowlist by definition. Adding `"allow"`
+  there is what kept autopilot behaviour identical; verified before and after.
+- **`spec.KIND_TYPES.get(kind)` returning `None` silently disables the type check** and looks exactly
+  like the deliberate `None` on `judge`/`clear`. Always add the entry explicitly.
+
+`guard.py`'s prose-reading heuristic is gone; `preflight.py` carries the check instead, as a warning
+("this step stamps a field its own description does not mention — did you mean `allow`?"), gated on
+`now` only. Prose is an incomplete description on purpose — a step's due date lives in its `owner`
+column, not in `writes` — which is why the write path should never have depended on it.
 
 **A real bug fixed in `rules.py` while building this:** when a close was refused for having no verdict,
 `writes["stage"]` had already been set by the clamp above and was never removed — so the refusal was

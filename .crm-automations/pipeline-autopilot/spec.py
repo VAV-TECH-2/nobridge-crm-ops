@@ -90,13 +90,17 @@ def api_name(label):
     return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
 
 
-# The `sets` value vocabulary, documented in workflow_spec.py's header. Six kinds and no more; an
+# The `sets` value vocabulary, documented in workflow_spec.py's header. Seven kinds and no more; an
 # unrecognised value is a preflight blocker rather than something quietly ignored, because a typo in
 # the spec must not turn into a field the autopilot silently declines to write.
-VALUE_KINDS = ("now", "enum", "loop_next", "judge", "clear", "offset")
+VALUE_KINDS = ("now", "enum", "loop_next", "judge", "clear", "offset", "allow")
 
 # Which field types each kind can legally target. Checked by preflight, so `{"nextSteps": "now"}`
 # is caught in the spec rather than at 03:00 against a live record.
+#
+# A None here means "any type", and preflight skips the type check for it. Every None must therefore
+# be deliberate and present: `KIND_TYPES.get(kind)` also returns None for a kind that was added to
+# VALUE_KINDS and forgotten here, and that failure is invisible - the check just silently passes.
 KIND_TYPES = {
     "now": ("DATE_TIME", "DATE"),
     "loop_next": ("DATE_TIME", "DATE"),
@@ -104,6 +108,7 @@ KIND_TYPES = {
     "enum": ("SELECT", "MULTI_SELECT"),
     "judge": None,   # anything - judgement supplies a value of the right shape
     "clear": None,   # anything nullable
+    "allow": None,   # anything - nothing writes it, so no type can be wrong
 }
 
 _OFFSET_RE = re.compile(r"^\+(\d+)(bd|d)$")
@@ -113,7 +118,12 @@ def value_spec(v):
     """Parse a `sets` value into (kind, payload).
 
     ("now", None) · ("enum", "Hosted") · ("loop_next", None) · ("judge", None) ·
-    ("clear", None) · ("offset", (90, "d")) · ("unknown", <raw>) when it matches nothing.
+    ("clear", None) · ("offset", (90, "d")) · ("allow", None) ·
+    ("unknown", <raw>) when it matches nothing.
+
+    "allow" is the one that writes nothing: the field is authorised at this stage but belongs to a
+    later event. Every consumer must skip it, and the judgement layer must not offer it to the model
+    - see judge._writable_text, whose filter is a denylist.
     """
     if v is None:
         return ("judge", None)          # prose fallback named a field but no value
@@ -122,7 +132,7 @@ def value_spec(v):
         return ("now", None)
     if s.startswith("@"):
         return ("enum", s[1:])
-    if s in ("loop_next", "judge", "clear"):
+    if s in ("loop_next", "judge", "clear", "allow"):
         return (s, None)
     m = _OFFSET_RE.match(s)
     if m:
