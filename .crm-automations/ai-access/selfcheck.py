@@ -92,7 +92,7 @@ def check():
 
     # ── the two prompt renderings ──
     try:
-        gpt = context.gpt_instructions(tools.tool_lines())
+        gpt = context.gpt_instructions()
         rep["gpt_chars"] = len(gpt)
         if len(gpt) > context.GPT_CAP:
             B("the ChatGPT instruction block is %d characters; the Custom GPT box truncates at "
@@ -102,6 +102,19 @@ def check():
               % (len(gpt), context.GPT_CAP))
     except Exception as e:                          # noqa: BLE001
         B("could not build the ChatGPT instructions: %s" % e)
+    try:
+        rep["agent_chars"] = len(context.agent_instructions(tools.tool_reference()))
+        for must in ("ACCESS POLICY", "HOW TO CALL IT", "HOW TO READ WHAT COMES BACK",
+                     "THE CONFIRM GATE"):
+            if must not in context.agent_instructions(tools.tool_reference()):
+                B("the agent instructions lost its %r section" % must)
+        # Every tool must appear in the reference, or an agent cannot call it.
+        ref = tools.tool_reference()
+        for t in tools.TOOLS:
+            if t["name"] not in ref:
+                B("%s is missing from the agent tool reference" % t["name"])
+    except Exception as e:                          # noqa: BLE001
+        B("could not build the agent instructions: %s" % e)
     try:
         rep["mcp_instruction_chars"] = len(context.instructions(tools.tool_lines()))
     except Exception as e:                          # noqa: BLE001
@@ -157,8 +170,9 @@ def main():
                                         sum(1 for t in tools.TOOLS if t["writes"])))
     print("context:   %s · %d sections · %d chars total"
           % (rep["context_fingerprint"], len(rep["sections"]), sum(rep["sections"].values())))
-    print("prompts:   MCP %d chars · ChatGPT %d/%d chars"
-          % (rep.get("mcp_instruction_chars", 0), rep.get("gpt_chars", 0), context.GPT_CAP))
+    print("prompts:   MCP %d · ChatGPT %d/%d · agent %d chars"
+          % (rep.get("mcp_instruction_chars", 0), rep.get("gpt_chars", 0), context.GPT_CAP,
+             rep.get("agent_chars", 0)))
     print("tokens:    %d active" % rep.get("tokens_active", 0))
     print()
     for w in rep["warnings"]:

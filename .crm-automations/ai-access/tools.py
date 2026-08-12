@@ -97,6 +97,47 @@ def tool_lines():
     return "\n".join(out)
 
 
+def tool_reference():
+    """The full calling reference: every tool, every parameter, generated from the registry.
+
+    For an agent that speaks HTTP itself there is no schema to import, so the parameters have to be
+    written out. Generating them from the same TOOLS list the OpenAPI document comes from is the only
+    way a hand-written reference cannot go stale — which it would, on the first parameter added.
+    """
+    out = []
+    for t in TOOLS:
+        head = t["name"]
+        if t["writes"]:
+            head += "   [WRITES — needs confirm]"
+        out.append(head)
+        out.append("  " + " ".join(t["description"].split()))
+        props = t["input_schema"].get("properties") or {}
+        required = set(t["input_schema"].get("required") or [])
+        if not props:
+            out.append("  takes no arguments — send {}")
+        for name in sorted(props, key=lambda n: (n not in required, n == "confirm", n)):
+            spec_ = props[name]
+            bits = [spec_.get("type", "any")]
+            if spec_.get("enum"):
+                bits.append("one of: " + " | ".join(spec_["enum"]))
+            if spec_.get("items", {}).get("type"):
+                bits.append("of " + spec_["items"]["type"])
+            flag = "REQUIRED" if name in required else "optional"
+            out.append("    %-12s (%s) %s" % (name, ", ".join(bits), flag))
+            desc = " ".join((spec_.get("description") or "").split())
+            if desc:
+                # Wrap by hand: an agent prompt is read as plain text, not reflowed.
+                line = "        "
+                for word in desc.split():
+                    if len(line) + len(word) > 96:
+                        out.append(line)
+                        line = "        "
+                    line += word + " "
+                out.append(line.rstrip())
+        out.append("")
+    return "\n".join(out).rstrip()
+
+
 # ── shared helpers ─────────────────────────────────────────────────────────────────────────────
 
 _COLS = {}

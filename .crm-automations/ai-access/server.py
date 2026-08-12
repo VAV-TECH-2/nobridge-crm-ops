@@ -5,7 +5,9 @@
     POST /ai/tools/<name>       plain JSON, Authorization: Bearer <token>, for a ChatGPT Custom GPT.
     GET  /ai/openapi.json       the OpenAPI 3.1 document those Actions are built from. Public: it
                                 contains no secrets, and ChatGPT fetches it unauthenticated.
-    GET  /ai/gpt-instructions.txt   the block to paste into the Custom GPT. Token-gated.
+    GET  /ai/gpt-instructions.txt   the block to paste into a hosted custom GPT. Token-gated.
+    GET  /ai/agent-instructions.txt the system prompt for an agent that calls this over HTTP itself,
+                                including the wire contract and every parameter. Token-gated.
     GET  /ai/context.md         the whole context pack, for reading or diffing. Token-gated.
     GET  /ai/status             what the dashboard's AI Access tab shows. Loopback only.
     GET  /healthz               liveness.
@@ -285,12 +287,17 @@ class Handler(BaseHTTPRequestHandler):
                     if part.startswith("token="):
                         secret = part.split("=", 1)[1]
 
-            if path in ("/ai/gpt-instructions.txt", "/ai/context.md"):
+            if path in ("/ai/gpt-instructions.txt", "/ai/agent-instructions.txt",
+                        "/ai/context.md"):
                 p = self._principal(secret)
                 if not p:
                     return None
                 if path.endswith("gpt-instructions.txt"):
-                    return self._send(200, context.gpt_instructions(tools.tool_lines()),
+                    return self._send(200, context.gpt_instructions(),
+                                      "text/plain; charset=utf-8")
+                if path.endswith("agent-instructions.txt"):
+                    return self._send(200,
+                                      context.agent_instructions(tools.tool_reference()),
                                       "text/plain; charset=utf-8")
                 return self._send(200, context.full_markdown(), "text/markdown; charset=utf-8")
 
@@ -392,7 +399,8 @@ def status():
         # The ChatGPT block travels with the status so the dashboard has one loopback endpoint to
         # call rather than a second, differently-authenticated one. It is not a secret — it is the
         # same public description of the workflow WORKFLOWS.md carries.
-        "gpt_instructions": context.gpt_instructions(tools.tool_lines()),
+        "gpt_instructions": context.gpt_instructions(),
+        "agent_instructions": context.agent_instructions(tools.tool_reference()),
         "tokens": toks,
         "recent_requests": store_ai.recent_requests(40),
         "tool_counts_7d": store_ai.tool_counts(since),
