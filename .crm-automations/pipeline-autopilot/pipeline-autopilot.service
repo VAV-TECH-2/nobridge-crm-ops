@@ -1,6 +1,6 @@
 [Unit]
 Description=Pipeline Autopilot — email, meetings and calls into the CRM records
-Documentation=https://node.nobridge.co/#automations|key=pipeline-autopilot
+Documentation=https://app.nobridge.co/ops/#automations|key=pipeline-autopilot
 After=network.target docker.service
 Requires=docker.service
 

@@ -10,7 +10,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 WORKSPACE_ID = "4997fc5b-3a7a-4b88-9af6-7e97cda53693"
 API_KEY_ID   = "c28fcffa-169a-46b5-9585-e2e209851b0f"   # "Look-Up Integration" -> Admin role
-HOST         = "https://crm.nobridge.co"
+HOST         = "https://app.nobridge.co"
 VM           = "azureuser@20.189.126.94"
 
 # Live object/workspace ids (filled in as discovered; keep here for reuse)

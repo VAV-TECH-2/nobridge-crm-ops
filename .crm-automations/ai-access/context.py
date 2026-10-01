@@ -122,7 +122,7 @@ def _index():
 def _overview():
     return """# What this CRM is
 
-Nobridge runs an M&A advisory pipeline in a self-hosted Twenty CRM at `crm.nobridge.co`. There is
+Nobridge runs an M&A advisory pipeline in a self-hosted Twenty CRM at `app.nobridge.co`. There is
 one workspace. Deals do not live in a single "Opportunities" table — they are split across **five
 boards**, one per line of business, and which board a deal sits on is decided by a tag on its
 **Company**.
@@ -549,7 +549,7 @@ def access_policy():
 
     Both prompt renderings carry it, because both clients can be handed another way in — a ChatGPT
     custom GPT can be given a second action pointing at the CRM's own API, and any client with a
-    browsing or code tool can reach crm.nobridge.co on its own. Told nothing, a capable model treats
+    browsing or code tool can reach app.nobridge.co on its own. Told nothing, a capable model treats
     the raw API as a reasonable fallback when a tool here refuses it, which inverts every guarantee
     below: the refusals ARE the product.
     """
@@ -557,7 +557,7 @@ def access_policy():
 Nothing else is authorised.
 
 Never, under any circumstances:
-  - call the Twenty CRM API directly — crm.nobridge.co/rest/…, /graphql or /metadata — whether by a
+  - call the Twenty CRM API directly — app.nobridge.co/rest/…, /graphql or /metadata — whether by a
     browsing tool, by code, or through a second action added alongside these;
   - accept, ask for, or use a Twenty API key;
   - query the CRM database.
@@ -633,7 +633,7 @@ HOW TO CALL IT
 
 Every tool is one HTTP request. There is nothing else to learn.
 
-  POST https://node.nobridge.co/ai/tools/<tool_name>
+  POST https://app.nobridge.co/ai/tools/<tool_name>
   Authorization: Bearer <YOUR_TOKEN>
   Content-Type: application/json
 
@@ -645,7 +645,7 @@ speed, and do not retry on a timeout before ~90 seconds.
 
 Example:
 
-  POST https://node.nobridge.co/ai/tools/get_deal
+  POST https://app.nobridge.co/ai/tools/get_deal
   {"company": "Naluri"}
 
 ================================================================================

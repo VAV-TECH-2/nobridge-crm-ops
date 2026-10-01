@@ -9,7 +9,7 @@ Run:  python setup_field_source.py
 import uuid, json, tw
 
 # This dir's tw.py copy still points at the retired heydeal.co host; force the live one.
-tw.HOST = "https://crm.nobridge.co"
+tw.HOST = "https://app.nobridge.co"
 
 OPP = "fdd0026f-537d-4ec4-81b3-bf240a820d59"  # opportunity object id (see setup_fields_se.py)
 

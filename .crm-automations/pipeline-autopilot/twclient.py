@@ -8,7 +8,7 @@ Dual-mode on purpose, because this code runs in two places:
                               everything on that box.
   ON A LAPTOP (dry runs)      token minted in-process from APP_SECRET, fetched over SSH so the
                               secret never lands on disk. Same as .crm-migrate-v2/tw.py:25-53.
-                              Requests go to https://crm.nobridge.co.
+                              Requests go to https://app.nobridge.co.
 
 Mode is detected from the filesystem, not from an env var, so nothing has to be remembered. Set
 AUTOPILOT_FORCE_REMOTE=1 to use the laptop path even on the VM (useful when comparing the two).
@@ -36,7 +36,7 @@ API_KEY_ID = "c28fcffa-169a-46b5-9585-e2e209851b0f"   # "Look-Up Integration" ->
 VM = "azureuser@20.189.126.94"
 ENGINE_ENV = "/home/azureuser/sales-engine/.env"
 
-REMOTE_HOST = "https://crm.nobridge.co"
+REMOTE_HOST = "https://app.nobridge.co"
 LOCAL_HOST = "http://127.0.0.1:3000"
 
 # Twenty's own rate limit. 0.7s ~= 85 req/min against a 100/60s cap that is shared workspace-wide.

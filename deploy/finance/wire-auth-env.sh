@@ -23,7 +23,7 @@ sed -i '/# >>> nobridge-finance auth bridge >>>/,/# <<< nobridge-finance auth br
 cat >> "$ENV" <<EOF
 # >>> nobridge-finance auth bridge >>>
 FINANCE_SESSION_SECRET=$SESSION
-TWENTY_METADATA_URL=https://crm.nobridge.co/metadata
+TWENTY_METADATA_URL=https://app.nobridge.co/metadata
 TWENTY_API_KEY=$API_KEY
 FULL_ACCESS_ROLES=Admin,Manager
 # <<< nobridge-finance auth bridge <<<

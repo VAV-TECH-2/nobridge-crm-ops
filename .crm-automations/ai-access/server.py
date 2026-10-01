@@ -30,7 +30,7 @@ TWO THINGS THAT LOOK WRONG AND ARE NOT:
 
 OAUTH DISCOVERY. MCP clients probe /.well-known/oauth-* and /register before connecting, and if
 those return HTML the client decides an OAuth server is there and fails trying to parse it. Caddy
-answers them 404 for this host (deploy/Caddyfile.nobridge-final) — the same fix fin.nobridge.co
+answers them 404 for this host (deploy/Caddyfile.unified) — the same fix fin.nobridge.co
 needed on 2026-07-28. This server also answers them 404 itself, so a direct-to-port test behaves the
 same way as the proxied one.
 """

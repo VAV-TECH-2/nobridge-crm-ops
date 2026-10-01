@@ -1,6 +1,6 @@
 [Unit]
 Description=Nobridge AI Access — CRM connector for Claude and ChatGPT
-Documentation=https://node.nobridge.co/#automations|key=ai-access
+Documentation=https://app.nobridge.co/ops/#automations|key=ai-access
 After=network-online.target docker.service
 Wants=network-online.target
 

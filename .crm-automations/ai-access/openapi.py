@@ -21,7 +21,7 @@ against the same store, so revoking one revokes both.
 import deps  # noqa: F401
 import tools
 
-PUBLIC_BASE = "https://node.nobridge.co"
+PUBLIC_BASE = "https://app.nobridge.co"
 
 # ChatGPT refuses to import a document with more operations than this.
 MAX_OPERATIONS = 30

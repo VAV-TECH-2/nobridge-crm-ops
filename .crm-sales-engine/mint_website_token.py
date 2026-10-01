@@ -13,7 +13,7 @@ import time, json, hmac, hashlib, base64, urllib.request, urllib.error
 import tw
 
 # This dir's tw.py copy still points at the retired heydeal.co host; force the live one.
-tw.HOST = "https://crm.nobridge.co"
+tw.HOST = "https://app.nobridge.co"
 
 OUT_FILE = "website_twenty_token.txt"
 
@@ -33,7 +33,7 @@ si = b64(json.dumps(header, separators=(",", ":")).encode()) + b"." + \
 token = (si + b"." + b64(hmac.new(secret.encode(), si, hashlib.sha256).digest())).decode()
 open(OUT_FILE, "w").write(token)
 
-# Verify against the LIVE host (tw.HOST = https://crm.nobridge.co), reading a field the
+# Verify against the LIVE host (tw.HOST = https://app.nobridge.co), reading a field the
 # website will write to (source) to confirm the metadata migration has run.
 req = urllib.request.Request(
     tw.HOST + "/graphql",

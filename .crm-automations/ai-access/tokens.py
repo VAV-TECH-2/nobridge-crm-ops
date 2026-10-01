@@ -22,7 +22,7 @@ import auth
 import crm
 import store_ai
 
-BASE = "https://node.nobridge.co/ai/mcp/"
+BASE = "https://app.nobridge.co/ai/mcp/"
 
 
 def _now():
