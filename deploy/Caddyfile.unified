@@ -8,19 +8,11 @@
 # session cookie (tokenPair, path /) and ask Twenty who it belongs to. Neither
 # has a login flow of its own any more.
 #
-# The three old hostnames stay up FOREVER, because machines depend on them:
-#   crm.nobridge.co   API for the sales engine, autopilot, clienttype-sync,
-#                     DataFlow, crons, Finance/Ops role lookups; Google OAuth
-#                     callbacks (AUTH_GOOGLE_*_CALLBACK_URL are registered in GCP
-#                     against this host). Only browser page loads move to app.
-#   fin.nobridge.co   /mcp/<token> (Claude connector), /api/agent/* (agent API,
-#                     ChatGPT), /api/public/* — proxied, never redirected (a
-#                     redirect turns a POST into a GET). Pages move to app.
-#   node.nobridge.co  /ai/* (AI Access: Claude MCP URLs + ChatGPT Actions have
-#                     this host pasted in). The dashboard moves to app/ops.
-#
-# Old-host page redirects are 302 on purpose until the move has settled: a 301
-# is cached by browsers indefinitely and would outlive a rollback.
+# The old hostnames crm., fin. and node.nobridge.co were RETIRED on 2026-10-01:
+# every machine client moved here first (CRM API, Google OAuth callbacks, AI
+# Access /ai/*, Finance /finance/mcp + /finance/api/agent), their traffic was
+# watched in Caddy logs, then their DNS records (A + SPF TXT) were deleted.
+# Backup of those records: deploy/unify/dns-records-deleted-20261001.json.
 
 app.nobridge.co {
     encode zstd gzip
@@ -74,125 +66,5 @@ app.nobridge.co {
         header @images Cache-Control "public, max-age=86400"
 
         reverse_proxy 127.0.0.1:3000
-    }
-}
-
-crm.nobridge.co {
-    encode zstd gzip
-
-    # Retirement watch: who still calls this host? Read before deleting its DNS.
-    log {
-        output file /var/log/caddy/crm-legacy.log {
-            roll_size 20MiB
-            roll_keep 3
-        }
-        format json
-    }
-
-    # Legacy path from cached overlay bundles: the Finance switcher entry was a
-    # relative /finance long ago. app.nobridge.co/finance is where it lives now.
-    @finpath path /finance /finance/*
-    handle @finpath {
-        redir https://app.nobridge.co{uri} 302
-    }
-
-    # A person opening a CRM page (top-level browser navigation) goes to app.
-    # Everything else — API calls, Google's OAuth callbacks under /auth/*,
-    # images, files — is served here as before.
-    @page_load {
-        method GET HEAD
-        not path /auth/*
-        expression `{http.request.header.Sec-Fetch-Mode} == "navigate" || {http.request.header.Accept}.contains("text/html")`
-    }
-    handle @page_load {
-        redir https://app.nobridge.co{uri} 302
-    }
-
-    handle {
-        @assets path /assets/*
-        header @assets Cache-Control "public, max-age=31536000, immutable"
-
-        @fonts path /fonts/*
-        header @fonts Cache-Control "public, max-age=31536000, immutable"
-
-        @images path /images/*
-        header @images Cache-Control "public, max-age=86400"
-
-        reverse_proxy 127.0.0.1:3000
-    }
-}
-
-fin.nobridge.co {
-    encode zstd gzip
-
-    # Retirement watch: who still calls this host? Read before deleting its DNS.
-    log {
-        output file /var/log/caddy/fin-legacy.log {
-            roll_size 20MiB
-            roll_keep 3
-        }
-        format json
-    }
-
-    # Claude connector fix (2026-07-28): MCP clients probe OAuth discovery +
-    # dynamic client registration before connecting; a bare 404 tells them "no
-    # OAuth here" so they use the token in the URL path. Not app routes.
-    @oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openid-configuration* /register
-    handle @oauth_probe {
-        respond 404
-    }
-
-    # Machine surfaces keep their URLs: /mcp/<token>, /api/agent/*, /api/public/*.
-    # The app now lives under basePath /finance, so put the prefix on.
-    @machine path /mcp /mcp/* /api/*
-    handle @machine {
-        rewrite * /finance{uri}
-        reverse_proxy 127.0.0.1:3100
-    }
-
-    # Everything else is a page (including the public /submit form): to app.
-    handle {
-        redir https://app.nobridge.co/finance{uri} 302
-    }
-}
-
-# AI Access stays on this host for good; the dashboard moved to app.nobridge.co/ops.
-node.nobridge.co {
-    encode zstd gzip
-
-    # Retirement watch: who still calls this host? Read before deleting its DNS.
-    log {
-        output file /var/log/caddy/node-legacy.log {
-            roll_size 20MiB
-            roll_keep 3
-        }
-        format json
-    }
-
-    # No OAuth server lives here — see the fin.nobridge.co block. A bare 404 sends
-    # MCP clients to the token in the URL, which is what /ai/mcp/<token> uses.
-    @oauth_probe path /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openid-configuration* /register
-    handle @oauth_probe {
-        respond 404
-    }
-
-    # AI Access — the CRM connector for Claude (MCP, token in the path) and ChatGPT
-    # (Bearer). Its own token auth and its own port. Live 2026-08-11.
-    handle /ai/* {
-        request_body {
-            max_size 1MB
-        }
-        reverse_proxy 127.0.0.1:3300
-    }
-
-    # The ops MCP connector was REMOVED 2026-08-07. Old /mcp/<token> URLs stay a
-    # clean 404 rather than redirecting to a sign-in page.
-    handle /mcp/* {
-        respond 404
-    }
-
-    # The dashboard itself: to its new home.
-    handle {
-        redir https://app.nobridge.co/ops{uri} 302
     }
 }

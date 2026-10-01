@@ -2,14 +2,17 @@
 
 **Read [`README.md`](./README.md) in this folder before doing anything.** It documents the live architecture, every service, where each credential lives, and the setup steps for a new machine. (Claude auto-loads this CLAUDE.md but not the README — so go read it.)
 
-This is an **operations workspace**, not one app. It holds the CRM frontend source (`twenty/`), deploy/infra config (`deploy/`), and Python scripts (`.crm-*/`) that talk to the **live production server** at `crm.nobridge.co`.
+This is an **operations workspace**, not one app. It holds the CRM frontend source (`twenty/`), deploy/infra config (`deploy/`), and Python scripts (`.crm-*/`) that talk to the **live production server** at `app.nobridge.co`.
 
-## 🔗 One address since 2026-10-01 — `app.nobridge.co` (`/`, `/finance`, `/ops`)
-CRM, Finance and the Ops dashboard share one origin and one sign-in (the CRM's). See README §1.
-Rules: **never move or redirect the machine URLs** — `crm.nobridge.co` API + `/auth/*` Google
-callbacks, `fin.nobridge.co/mcp/*` + `/api/*`, `node.nobridge.co/ai/*`; only browser page loads on
-old hosts redirect. Finance must be built with `NEXT_PUBLIC_BASE_PATH=/finance` (CI does this);
-the dashboard needs `DASH_BASE_PATH=/ops`. Undo: `deploy/unify/rollback.sh` on the VM.
+## 🔗 One address since 2026-10-01 — `app.nobridge.co` (`/`, `/finance`, `/ops`, `/ai`)
+CRM ("Operations"), Finance and the Ops dashboard ("Integration") share one origin and one sign-in
+(the CRM's). See README §1. **`crm.`, `fin.` and `node.nobridge.co` no longer exist** (DNS deleted
+2026-10-01): the CRM API, Google OAuth callbacks, AI Access (`/ai/`) and Finance's connector
+(`/finance/mcp/<token>`, `/finance/api/agent`) all live on `app.nobridge.co`. Old notes, scripts and
+docs that say crm./fin./node. mean app.nobridge.co. Finance must be built with
+`NEXT_PUBLIC_BASE_PATH=/finance` (CI does this); the dashboard needs `DASH_BASE_PATH=/ops`;
+`app.nobridge.co` must keep answering 404 to `/.well-known/oauth-*` and `/register` (Twenty would
+otherwise advertise its own OAuth server and break token-in-URL connectors).
 
 ## Non-negotiable safety rules
 1. **Pin Twenty to `v2.7.3`. Never boot `latest`** — it migrates the DB forward and the pinned image then crashes (Postgres `42703`). Backend runs the stock image; only the frontend is customized.
@@ -40,7 +43,7 @@ An hourly systemd timer reads the synced email, calendar and Call Intelligence o
 production**: stage, contact dates, next owner, next action due, meeting outcome, qualified, owner,
 "where we last left off", and a note when something happened. Source
 [`.crm-automations/pipeline-autopilot/`](./.crm-automations/pipeline-autopilot/), deployed to
-`/opt/nobridge-pipeline-autopilot/`, card + docs + an **Autopilot tab** on node.nobridge.co.
+`/opt/nobridge-pipeline-autopilot/`, card + docs + an **Autopilot tab** on app.nobridge.co/ops.
 
 **It reads [`workflow_spec.py`](./.crm-automations/dashboard/workflow_spec.py) at runtime.** That is
 the whole design: the rules it acts on are the same ones `WORKFLOWS.md` and the Workflow tab are
@@ -69,10 +72,10 @@ Rules for anyone touching it:
   silently blinds it on that mailbox.
 
 ## 🧠 You can talk to the CRM now — `ai-access` (live 2026-08-11)
-A connector at **`node.nobridge.co/ai/`** that lets Claude (MCP, token in the URL) or a ChatGPT
+A connector at **`app.nobridge.co/ai/`** that lets Claude (MCP, token in the URL) or a ChatGPT
 custom GPT (OpenAPI Actions, Bearer) read the pipeline and change it. Source
 [`.crm-automations/ai-access/`](./.crm-automations/ai-access/), deployed to `/opt/nobridge-ai-access/`,
-systemd unit `nobridge-ai-access`, plus an **AI Access tab** on node.nobridge.co.
+systemd unit `nobridge-ai-access`, plus an **AI Access tab** on app.nobridge.co/ops.
 
 **This deliberately replaces the ops MCP connector retired 2026-08-07** — the tombstone below said
 "do not resurrect without being asked", and it was asked for. The old one failed because it exposed
@@ -104,7 +107,7 @@ Rules for anyone touching it:
 - **Per-person tokens** (`tokens.py --issue <email> --scope read|write [--boards …]`), sha256 only, so
   a token is shown once and never again. Access also requires a live Admin/Manager role in the CRM —
   removing somebody there removes this. Unknown or revoked → **bare 404**, never 401.
-- **`/.well-known/oauth-*` and `/register` must 404 on node.nobridge.co** or MCP clients try to sign
+- **`/.well-known/oauth-*` and `/register` must 404 on app.nobridge.co** or MCP clients try to sign
   in and fail confusingly — the `fin.nobridge.co` lesson of 2026-07-28. It is in the Caddyfile.
 - **It never sends email either.** The unlock is that the same AI holds your mailbox: send there,
   stamp the CRM here. It cannot see cold outreach, same blind spot as the autopilot.

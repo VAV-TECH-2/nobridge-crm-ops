@@ -20,18 +20,17 @@ Three live web properties make up the Nobridge system, all hosted on **one Azure
 > three. The CRM front hands people back to `/finance`/`/ops` via Twenty's own `?returnToPath=`
 > (fork patch in `PageChangeEffect.tsx`, only after `currentUser` loads so an expired token is
 > renewed first). Caddy: [`deploy/Caddyfile.unified`](./deploy/Caddyfile.unified). Cutover and
-> undo: [`deploy/unify/`](./deploy/unify/). **The old hosts stay up for machines, permanently:**
-> `crm.nobridge.co` still serves the API (sales engine, autopilot, crons, DataFlow, role
-> lookups) and Google's OAuth callbacks (`AUTH_GOOGLE_*_CALLBACK_URL` are registered in GCP on
-> that host); `fin.nobridge.co` still serves `/mcp/<token>`, `/api/agent/*`, `/api/public/*`;
-> `node.nobridge.co` still serves AI Access at `/ai/`. Only browser page loads on the old hosts
-> redirect (302) to `app.nobridge.co`.
+> undo: [`deploy/unify/`](./deploy/unify/). **The old hosts are gone:** `crm.`, `fin.` and
+> `node.nobridge.co` had every machine client moved onto `app.nobridge.co` (CRM API, Google OAuth
+> callbacks `AUTH_GOOGLE_*_CALLBACK_URL`, AI Access at `/ai/`, Finance's `/finance/mcp/<token>` and
+> `/finance/api/agent`, the website's lead capture, the sales engine, Mailer) and their DNS records
+> were deleted the same day (backup: `deploy/unify/dns-records-deleted-20261001.json`).
 
 | Property | URL | What it is |
 |---|---|---|
-| **CRM** | `app.nobridge.co` (was `crm.nobridge.co`, which still serves the API) | Self-hosted [Twenty CRM](https://twenty.com) v2.7.3 (stock Docker image + a custom frontend bundle overlaid on top). The core system. `SERVER_URL`/`FRONTEND_URL` = `https://app.nobridge.co`. |
-| **Finance** | `app.nobridge.co/finance` (was `fin.nobridge.co`, which still serves its connector + agent API) | "Nobridge Finance" — a separate Next.js app (cost/income submission → approvals → payment tracking + analytics), built with basePath `/finance`. Own database; reads the CRM only to identify you. |
-| **Ops** | `app.nobridge.co/ops` (was `node.nobridge.co`) | The ops dashboard (Calls · High Level Workflows · Workflow · Automations · Autopilot · AI Access · Logs) — read-only, CRM sign-in, CRM Admin/Manager only. **AI Access stays at `node.nobridge.co/ai/`** (its own service and its own token auth), the connector Claude and ChatGPT use to read and change the CRM — those URLs are pasted into people's connectors, never move them. The old `/mcp/*` connector was retired 2026-08-07 and still returns 404. |
+| **CRM** ("Operations") | `app.nobridge.co` (was `crm.nobridge.co`, retired) | Self-hosted [Twenty CRM](https://twenty.com) v2.7.3 (stock Docker image + a custom frontend bundle overlaid on top). The core system. `SERVER_URL`/`FRONTEND_URL` = `https://app.nobridge.co`. |
+| **Finance** | `app.nobridge.co/finance` (was `fin.nobridge.co`, retired) | "Nobridge Finance" — a separate Next.js app (cost/income submission → approvals → payment tracking + analytics), built with basePath `/finance`. Own database; reads the CRM only to identify you. |
+| **Ops** ("Integration") | `app.nobridge.co/ops` (was `node.nobridge.co`, retired) | The ops dashboard (Calls · High Level Workflows · Workflow · Automations · Autopilot · AI Access · Logs) — read-only, CRM sign-in, CRM Admin/Manager only. **AI Access lives at `app.nobridge.co/ai/`** (its own service and its own token auth), the connector Claude and ChatGPT use to read and change the CRM — those URLs are pasted into people's connectors, never move them. The old `/mcp/*` connector was retired 2026-08-07 and still returns 404. |
 
 This folder contains, for those properties:
 - **`twenty/`** — the CRM frontend source (a fork-branch of the Twenty monorepo; only the frontend is customized).

@@ -1,0 +1,38 @@
+[
+  {
+    "address": "20.189.126.94",
+    "name": "crm",
+    "type": "A",
+    "ttl": 1800
+  },
+  {
+    "value": "v=spf1 -all",
+    "name": "crm",
+    "type": "TXT",
+    "ttl": 1800
+  },
+  {
+    "address": "20.189.126.94",
+    "name": "fin",
+    "type": "A",
+    "ttl": 1800
+  },
+  {
+    "value": "v=spf1 -all",
+    "name": "fin",
+    "type": "TXT",
+    "ttl": 1800
+  },
+  {
+    "address": "20.189.126.94",
+    "name": "node",
+    "type": "A",
+    "ttl": 1800
+  },
+  {
+    "value": "v=spf1 -all",
+    "name": "node",
+    "type": "TXT",
+    "ttl": 1800
+  }
+]
