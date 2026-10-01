@@ -24,7 +24,7 @@ Examples:
 
   register_automation.py --key nobridge-finance --name "Nobridge Finance" \\
       --container nobridge-finance --schedule "Always on" \\
-      --description "The finance app at fin.nobridge.co."
+      --description "The finance app at app.nobridge.co/finance."
 
   register_automation.py --key twenty-backup --name "CRM Database Backup" \\
       --watch '/var/backups/twenty/db-*.sql.gz' --max-age-hours 30 --min-bytes 1000000 \\

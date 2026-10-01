@@ -86,7 +86,7 @@
     "name": "Finance App",
     "container": "nobridge-finance",
     "schedule": "Always on",
-    "description": "The finance site at fin.nobridge.co: cost and income submissions, the approval queue, and payment tracking.",
+    "description": "The finance site at app.nobridge.co/finance: cost and income submissions, the approval queue, and payment tracking.",
     "recordId": null
   },
   {

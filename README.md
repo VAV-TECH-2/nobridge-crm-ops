@@ -12,11 +12,26 @@
 
 Three live web properties make up the Nobridge system, all hosted on **one Azure VM**:
 
+> **Unified 2026-10-01 — one address, one sign-in.** All three properties now live on
+> **`app.nobridge.co`**: `/` = CRM, `/finance` = Finance, `/ops` = Ops dashboard. Finance and Ops
+> no longer have Google sign-ins of their own: on one origin the browser sends them the CRM's
+> session cookie (`tokenPair`), they ask Twenty `currentUser` who it belongs to, then do the
+> same CRM role check as before. Sign in once in the CRM; signing out anywhere signs out of all
+> three. The CRM front hands people back to `/finance`/`/ops` via Twenty's own `?returnToPath=`
+> (fork patch in `PageChangeEffect.tsx`, only after `currentUser` loads so an expired token is
+> renewed first). Caddy: [`deploy/Caddyfile.unified`](./deploy/Caddyfile.unified). Cutover and
+> undo: [`deploy/unify/`](./deploy/unify/). **The old hosts stay up for machines, permanently:**
+> `crm.nobridge.co` still serves the API (sales engine, autopilot, crons, DataFlow, role
+> lookups) and Google's OAuth callbacks (`AUTH_GOOGLE_*_CALLBACK_URL` are registered in GCP on
+> that host); `fin.nobridge.co` still serves `/mcp/<token>`, `/api/agent/*`, `/api/public/*`;
+> `node.nobridge.co` still serves AI Access at `/ai/`. Only browser page loads on the old hosts
+> redirect (302) to `app.nobridge.co`.
+
 | Property | URL | What it is |
 |---|---|---|
-| **CRM** | `crm.nobridge.co` | Self-hosted [Twenty CRM](https://twenty.com) v2.7.3 (stock Docker image + a custom frontend bundle overlaid on top). The core system. |
-| **Finance** | `fin.nobridge.co` | "Nobridge Finance" — a separate Next.js app (cost/income submission → approvals → payment tracking + analytics). Fully isolated from the CRM. |
-| **Ops** | `node.nobridge.co` | The ops dashboard (Calls · High Level Workflows · Workflow · Automations · Autopilot · AI Access · Logs) — read-only, Google sign-in, CRM Admin/Manager only, like Finance. Also hosts **AI Access** at `/ai/` (its own service and its own token auth), the connector Claude and ChatGPT use to read and change the CRM. The old `/mcp/*` connector was retired 2026-08-07 and still returns 404. |
+| **CRM** | `app.nobridge.co` (was `crm.nobridge.co`, which still serves the API) | Self-hosted [Twenty CRM](https://twenty.com) v2.7.3 (stock Docker image + a custom frontend bundle overlaid on top). The core system. `SERVER_URL`/`FRONTEND_URL` = `https://app.nobridge.co`. |
+| **Finance** | `app.nobridge.co/finance` (was `fin.nobridge.co`, which still serves its connector + agent API) | "Nobridge Finance" — a separate Next.js app (cost/income submission → approvals → payment tracking + analytics), built with basePath `/finance`. Own database; reads the CRM only to identify you. |
+| **Ops** | `app.nobridge.co/ops` (was `node.nobridge.co`) | The ops dashboard (Calls · High Level Workflows · Workflow · Automations · Autopilot · AI Access · Logs) — read-only, CRM sign-in, CRM Admin/Manager only. **AI Access stays at `node.nobridge.co/ai/`** (its own service and its own token auth), the connector Claude and ChatGPT use to read and change the CRM — those URLs are pasted into people's connectors, never move them. The old `/mcp/*` connector was retired 2026-08-07 and still returns 404. |
 
 This folder contains, for those properties:
 - **`twenty/`** — the CRM frontend source (a fork-branch of the Twenty monorepo; only the frontend is customized).

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# !!! HISTORICAL — predates the 2026-10-01 unification. It rebuilds the CRM from
+# scratch (fresh APP_SECRET + DB password) with an apex-only crm.nobridge.co
+# Caddyfile, which would also drop Finance (/finance), Ops (/ops), AI Access and
+# every old-host forward. Do not run it as a "rollback". Current state:
+#   SERVER_URL/FRONTEND_URL = https://app.nobridge.co (Google callbacks stay on crm.)
+#   Caddy                   = deploy/Caddyfile.unified
+#   undo the unification    = deploy/unify/rollback.sh
 set -euo pipefail
 
 TS=$(date +%Y%m%d-%H%M%S)

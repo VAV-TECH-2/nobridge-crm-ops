@@ -4,6 +4,13 @@
 
 This is an **operations workspace**, not one app. It holds the CRM frontend source (`twenty/`), deploy/infra config (`deploy/`), and Python scripts (`.crm-*/`) that talk to the **live production server** at `crm.nobridge.co`.
 
+## 🔗 One address since 2026-10-01 — `app.nobridge.co` (`/`, `/finance`, `/ops`)
+CRM, Finance and the Ops dashboard share one origin and one sign-in (the CRM's). See README §1.
+Rules: **never move or redirect the machine URLs** — `crm.nobridge.co` API + `/auth/*` Google
+callbacks, `fin.nobridge.co/mcp/*` + `/api/*`, `node.nobridge.co/ai/*`; only browser page loads on
+old hosts redirect. Finance must be built with `NEXT_PUBLIC_BASE_PATH=/finance` (CI does this);
+the dashboard needs `DASH_BASE_PATH=/ops`. Undo: `deploy/unify/rollback.sh` on the VM.
+
 ## Non-negotiable safety rules
 1. **Pin Twenty to `v2.7.3`. Never boot `latest`** — it migrates the DB forward and the pinned image then crashes (Postgres `42703`). Backend runs the stock image; only the frontend is customized.
 2. **Many scripts here mutate production.** Before running one, find it in the README's Directory Guide and confirm it's LIVE vs HISTORICAL vs a `_`-prefixed scratch file. Prefer the idempotent setup scripts; treat `import_*`/`migrate_*`/`vm-rollback.sh` as dangerous.
