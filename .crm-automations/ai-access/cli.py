@@ -9,8 +9,8 @@
 This is the harness the read tools were built against, and the fastest way to see what a tool
 actually returns before wondering why a model misread it. It bypasses auth on purpose — it runs as
 whoever is at the keyboard, which on a laptop already means somebody holding the SSH key. WRITE
-tools still refuse without `"confirm": true`, exactly as they do over the wire, and there is no flag
-here to skip that.
+tools APPLY TO PRODUCTION on the first call, exactly as they do over the wire (since 2026-10-04) —
+pass `"preview": true` in the arguments to see the diff without changing anything.
 """
 import json
 import sys

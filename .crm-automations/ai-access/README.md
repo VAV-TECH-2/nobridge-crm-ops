@@ -1,4 +1,7 @@
-# AI Access — the CRM's brain, reachable from a chat window
+# API Access (Contextualized) — the CRM's brain, reachable from a chat window
+
+*Formerly "AI Access" (renamed 2026-10-04). The URL (`/ai/`), the systemd unit `nobridge-ai-access`
+and `/opt/nobridge-ai-access` keep the old name on purpose — connectors and scripts point at them.*
 
 The CRM updates itself (`../pipeline-autopilot/`). This is the other half: **asking it things, and
 telling it to change things**, from Claude or a ChatGPT custom GPT, without opening the CRM.
@@ -50,27 +53,29 @@ One CRM client, one validator, one audit trail, one ruleset. `deps.py` puts the 
 **Write** — `update_deal` · `set_stage` · `stamp_step` · `set_verdict` · `log_note` ·
 `create_company` · `tag_company` · `undo`
 
-Every write tool is a **two-call tool**: without `confirm: true` it returns the exact diff it would
-apply and changes nothing. The confirmation happens in the conversation, where the person is.
+Every write tool **applies on the first call** (owner's decision, 2026-10-04): no confirm round, and
+none of the pipeline's structural rules — any stage in any direction, reopening a closed deal,
+closing without a verdict, any field at any stage. Pass `preview: true` to see the diff without
+changing anything. Every write is still recorded and `undo` reverses it. The hourly autopilot keeps
+all of its rules.
 
 `stamp_step` is the one worth knowing about. Say *"I sent the proposal"* and it applies exactly the
 fields that workflow step defines — the sent-at timestamp, who owns it next, and the follow-up date
 counted from the right anchor field. Setting the timestamp by hand gets the date right and the
 follow-up ladder wrong.
 
-## What always refuses
+## What refuses
 
-Structural rules come from `rules.validate(..., actor="human")` and do not bend:
+Since 2026-10-04 `rules.validate(..., actor="human")` applies only what the CRM itself cannot hold:
 
-- one stage forward, or straight to `Closed` — never backwards, never skipping
-- never out of `CLOSED` (re-engaging a closed deal opens a *new* deal, ladder L10)
-- never close without a verdict in the same change
-- only fields a workflow step authorises at that stage, plus free-text commentary
-- every value coerced against the live options on *that* board
+- a stage, field or option that does not exist on *that* board (values are coerced against the live
+  options and types)
+- creating a company whose domain or email is on the CRM blocklist (blocklist-guard would delete it)
 
-What *does* bend for a person: the confidence bars (there is nothing to infer when somebody has said
-what they want) and the one-stage-move-per-day pacing cap — which yields, loudly, and records the
-override.
+Everything else is allowed for a person's assistant: any stage in any direction, reopening a closed
+deal, closing without a verdict, any field at any stage, no confidence bars, no pacing cap (a move
+still spends the day's allowance so the hourly run does not move the same deal again). The
+**autopilot** (`actor="autopilot"`) keeps every structural rule, because nobody is watching it.
 
 ## Setup
 

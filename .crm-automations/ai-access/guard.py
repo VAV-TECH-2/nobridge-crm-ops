@@ -1,27 +1,24 @@
 """The write path: preview, validate, apply, record.
 
 Every change this connector makes to a deal goes through here, and here goes through
-`rules.validate(..., actor="human")` — the autopilot's own validator. Nothing about what the pipeline
-MEANS is re-decided in this file: one stage forward or straight to Closed, never backwards, never out
-of Closed, never closed without a verdict, only fields a step at that stage authorises, every value
-coerced against the live options. Those refusals come from the same code the hourly run obeys, so the
-connector cannot be more permissive than the automation by accident.
+`rules.validate(..., actor="human")`. Since 2026-10-04 (owner's decision) that actor skips the
+pipeline's structural rules — a person's assistant may move a deal backwards, reopen it, close it
+without a verdict and write any field. Only what the CRM itself would reject is refused: an unknown
+stage or field, or a value that is not a live option. The hourly autopilot keeps every rule.
 
 What this file adds on top:
 
-  A CONFIRM GATE.   Nothing is written unless the caller passes confirm=true. Without it the caller
-                    gets the exact diff, field by field, old -> new, plus every refusal. The point is
-                    that the confirmation happens in the conversation, where the person is, rather
-                    than in the CRM afterwards.
+  NO CONFIRM GATE.  Writes apply on the first call. A caller that wants to look first passes
+                    preview=true and gets the exact diff, field by field, old -> new. The old
+                    `confirm` argument is accepted and ignored so existing clients keep working.
   ATTRIBUTION.      The run is recorded with source='ai' and the asking person's email, so the audit
                     trail says who, not just what.
   REVERSIBILITY.    Field writes land in the autopilot's `field_writes` with the old value and
                     source='ai', which is what makes `revert.py --run N --apply` undo a chat-driven
                     change with no new tooling.
-  PACING.           The autopilot's one-stage-move-per-record-per-day cap is not enforced against a
-                    person who has just asked for the move — but the override is flagged loudly in
-                    the result and recorded in the decision, and the move still SPENDS the day's
-                    allowance so the hourly run will not move the same deal again an hour later.
+  PACING.           The autopilot's one-stage-move-per-record-per-day cap does not apply to a
+                    person. The move still SPENDS the day's allowance, so the hourly run will not
+                    move the same deal again an hour later.
 
 ONE DELIBERATE GAP. Company-level writes (creating a company, changing its clientType tags) are
 recorded as decisions but NOT as field_writes, so `revert.py` never sees them. That is not laziness:
@@ -189,14 +186,6 @@ def plan(side, rec, stage=None, fields=None, reason=None):
     prop = proposal(stage=stage, fields=fields, reason=reason)
     writes, rejects, flags = rules.validate(side, rec, prop, actor="human")
 
-    # Pacing: a person asking overrides it, but it is never silent.
-    if "stage" in writes:
-        day = bizdays.now().strftime("%Y-%m-%d")
-        already = store.stage_moves_today(rec["id"], day)
-        if already:
-            flags.append("PACING OVERRIDE: this deal already moved stage %d time(s) today. The "
-                         "hourly automation would have refused a second move; you asked, so it is "
-                         "allowed — but say so out loud before confirming." % already)
     return writes, rejects, flags
 
 
@@ -221,11 +210,10 @@ def preview(side, rec, writes, rejects, flags, what, extra=None):
         "would_write": diff(side, rec, writes),
         "refused": [{"field": f, "value": v, "why": why} for f, v, why in rejects],
         "warnings": flags,
-        "confirm": ("Nothing has been changed. Show this to the user; if they agree, call the same "
-                    "tool again with confirm true."),
+        "preview": "Preview only — nothing has been changed. Call again without preview to apply.",
     }
     if not writes:
-        body["confirm"] = ("There is nothing to write — either the values already match, or every "
+        body["preview"] = ("There is nothing to write — either the values already match, or every "
                            "change was refused. Read `refused` before trying again.")
     if extra:
         body.update(extra)
@@ -233,7 +221,7 @@ def preview(side, rec, writes, rejects, flags, what, extra=None):
 
 
 def apply(side, rec, writes, rejects, flags, principal, what, reason=None, note=None):
-    """Write, record, and return what happened. Assumes confirm has already been checked."""
+    """Write, record, and return what happened."""
     if not writes:
         return preview(side, rec, writes, rejects, flags, what)
 

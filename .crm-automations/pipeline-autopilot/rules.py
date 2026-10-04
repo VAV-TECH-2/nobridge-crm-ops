@@ -312,13 +312,19 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
     Returns (writes, rejects, flags). `writes` is {field: value} ready for crm.patch; `rejects` is
     [(field, value, reason)] for the audit trail; `flags` are reasons a human should look.
 
-    `actor` is "autopilot" for the hourly run and "human" for the AI Access connector, where a person
-    has asked for the change in as many words. The ONLY difference is the confidence bars: they exist
-    to stop a model acting on a weak inference from a mailbox, and there is nothing to infer when
-    somebody has just said what they want. Every structural rule below — one stage forward or
-    straight to Closed, never backwards, never out of Closed, never closed without a verdict, only
-    fields a step at this stage authorises, and every value coerced against the live options —
-    applies identically to both, because those encode what the pipeline MEANS, not how sure we are.
+    `actor` is "autopilot" for the hourly run and "human" for API Access (Contextualized), where a
+    person has asked for the change in as many words.
+
+    The autopilot gets every rule: confidence bars, one stage forward or straight to Closed, never
+    backwards, never out of Closed, never closed without a verdict, only fields a step at this stage
+    authorises. It runs unattended, so those rules are the only thing standing between a misread
+    email and a wrong board.
+
+    "human" gets none of the structural rules (owner's decision, 2026-10-04): any stage in any
+    direction, reopening a closed deal, closing without a verdict, any field at any stage, Do Not
+    Contact without a quote. A person said what they want; the assistant does it. What still applies
+    to both is what the CRM itself would reject anyway — the stage must be a live option on that
+    board, the field must exist, and every value is coerced against its live type and options.
     """
     now = now or bizdays.now()
     human = actor == "human"
@@ -348,8 +354,8 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
             reason = "already at %s" % target
         elif not human and conf < MIN_CONF_STAGE:
             reason = "confidence %.2f below the %.2f bar for a stage move" % (conf, MIN_CONF_STAGE)
-        elif cur == "CLOSED":
-            # L10 re-engagement creates a NEW deal; it never reopens the closed one.
+        elif cur == "CLOSED" and not human:
+            # L10 re-engagement creates a NEW deal; it never reopens the closed one. (A person may.)
             reason = ("refusing to move a record out of Closed - re-engagement opens a new deal "
                       "(L10), it does not reopen this one")
         else:
@@ -359,6 +365,9 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
                 # it is allowed, and it is the only case where any stage is a legal target.
                 writes["stage"] = target
                 flags.append("record had no stage at all; placed at %s" % target)
+            elif human:
+                # A person asked for this exact stage: any direction, any distance.
+                writes["stage"] = target
             elif cur not in order or target not in order:
                 reason = "%s or %s is not in the spec's stage order" % (cur, target)
             else:
@@ -375,7 +384,7 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
         # remove: the board shows it as finished and nothing records how. Closing is therefore only
         # allowed together with a verdict. This is enforced here rather than asked for in the prompt,
         # because "the model usually remembers" is not a guarantee - and it did not, twice.
-        if not reason and target == "CLOSED":
+        if not reason and target == "CLOSED" and not human:
             verdict_field = "finalDecision" if "finalDecision" in live else (
                 "outcome" if "outcome" in live else None)
             if verdict_field:
@@ -410,7 +419,7 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
         if meta is None:
             rejects.append((field, value, "no such field on %s" % side))
             continue
-        if field not in allow and field not in COMMENTARY_FIELDS:
+        if not human and field not in allow and field not in COMMENTARY_FIELDS:
             rejects.append((field, value,
                             "no step at stage %s authorises writing %s"
                             % (record.get("stage"), field)))
@@ -420,7 +429,8 @@ def validate(side, record, proposal, loop=None, now=None, actor="autopilot"):
         if not human and conf < bar:
             rejects.append((field, value, "confidence %.2f below %.2f" % (conf, bar)))
             continue
-        if field == "finalDecision" and str(value).upper() == DNC and not upd.get("quote"):
+        if (not human and field == "finalDecision" and str(value).upper() == DNC
+                and not upd.get("quote")):
             rejects.append((field, value,
                             "Do Not Contact must quote the sentence that asked for it"))
             continue

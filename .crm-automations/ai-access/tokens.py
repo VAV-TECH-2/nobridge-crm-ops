@@ -1,4 +1,4 @@
-"""Issue, list, revoke and rotate AI Access tokens.
+"""Issue, list, revoke and rotate API Access (Contextualized) tokens.
 
     python3 tokens.py --list
     python3 tokens.py --issue vilca@nobridge.co --scope write --label "Claude desktop"
@@ -113,7 +113,7 @@ def _rotate(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="AI Access tokens")
+    ap = argparse.ArgumentParser(description="API Access (Contextualized) tokens")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--list", action="store_true")
     g.add_argument("--issue", metavar="EMAIL")

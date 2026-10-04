@@ -28,7 +28,7 @@
   },
   {
     "key": "ai-access",
-    "name": "Ask the CRM (Claude / ChatGPT)",
+    "name": "API Access (Contextualized)",
     "unit": "nobridge-ai-access",
     "scriptPath": "/opt/nobridge-ai-access/server.py",
     "schedule": "Always on",

@@ -59,12 +59,17 @@ def tool(name, description, properties=None, required=None, readonly=True, write
         props = dict(properties or {})
         req = list(required or [])
         if confirm:
+            # `confirm` here means "this tool supports a preview". Writes apply immediately; preview
+            # is opt-in. The old `confirm` argument stays in the schema (ignored) so clients built
+            # against the two-call version do not break on additionalProperties=false.
+            props["preview"] = {
+                "type": "boolean",
+                "description": "Optional. true = return the exact diff without changing anything. "
+                               "Leave it out to apply the change straight away.",
+            }
             props["confirm"] = {
                 "type": "boolean",
-                "description": "Must be true to actually apply the change. Called without it (or "
-                               "with false) this returns the exact diff it would apply and changes "
-                               "nothing — show that to the user, get a yes, then call again with "
-                               "confirm true.",
+                "description": "Ignored — kept for older clients. Changes apply immediately.",
             }
         TOOLS.append({
             "name": name,
@@ -92,7 +97,7 @@ def tool_lines():
     out = []
     for t in TOOLS:
         first = t["description"].strip().splitlines()[0]
-        mark = "" if t["readonly"] else " [writes, needs confirm]"
+        mark = "" if t["readonly"] else " [writes]"
         out.append("- `%s` — %s%s" % (t["name"], first, mark))
     return "\n".join(out)
 
@@ -108,14 +113,14 @@ def tool_reference():
     for t in TOOLS:
         head = t["name"]
         if t["writes"]:
-            head += "   [WRITES — needs confirm]"
+            head += "   [WRITES — applies immediately; preview=true to look first]"
         out.append(head)
         out.append("  " + " ".join(t["description"].split()))
         props = t["input_schema"].get("properties") or {}
         required = set(t["input_schema"].get("required") or [])
         if not props:
             out.append("  takes no arguments — send {}")
-        for name in sorted(props, key=lambda n: (n not in required, n == "confirm", n)):
+        for name in sorted(props, key=lambda n: (n not in required, n in ("preview", "confirm"), n)):
             spec_ = props[name]
             bits = [spec_.get("type", "any")]
             if spec_.get("enum"):
@@ -770,9 +775,9 @@ def list_members(args, p):
 
 
 # ══ WRITE TOOLS ════════════════════════════════════════════════════════════════════════════════
-# Every one of these is a two-call tool: without `confirm` it returns the diff it would apply and
-# changes nothing. The confirmation belongs in the conversation, with the person, not in the CRM
-# afterwards. See guard.py for the validation and the audit trail.
+# Every one of these applies on the first call (preview=true returns the diff instead). They act on
+# a person's instruction, so the pipeline's structural rules do not apply — see guard.py. Every write
+# is recorded and can be undone with the undo tool.
 
 def _write_target(args, p):
     """Resolve board + record_id for a write, and check the token may touch that board."""
@@ -786,10 +791,10 @@ def _write_target(args, p):
 
 
 @tool("update_deal",
-      """Change fields on a deal: the owner, when the next action is due, a date, or free-text
-      commentary like "where we last left off". Refuses any field the workflow does not authorise at
-      that stage. For a stage change use set_stage; for "I just sent the X" use stamp_step, which
-      knows which fields that event touches.""",
+      """Change fields on a deal: the owner, when the next action is due, a date, a verdict, or
+      free-text commentary like "where we last left off" — any field on the board. For a stage change
+      use set_stage; for "I just sent the X" use stamp_step, which knows which fields that event
+      touches.""",
       {"board": _BOARD,
        "record_id": _RECORD,
        "fields": {"type": "object", "additionalProperties": True,
@@ -805,25 +810,25 @@ def update_deal(args, p):
     if not isinstance(fields, dict) or not fields:
         raise ToolError("`fields` must be an object of field names to values")
     if "stage" in fields:
-        raise ToolError("stage is not set here — use set_stage, which applies the pipeline's rules "
-                        "about which moves are legal")
+        raise ToolError("stage is not set here — use set_stage, which also stamps stageChangedAt")
     writes, rejects, flags = guard.plan(side, rec, fields=fields, reason=args.get("reason"))
     what = "update %s" % ", ".join(sorted(fields))
-    if not args.get("confirm"):
+    if args.get("preview"):
         return guard.preview(side, rec, writes, rejects, flags, what)
     return guard.apply(side, rec, writes, rejects, flags, p, what, reason=args.get("reason"))
 
 
 @tool("set_stage",
-      """Move a deal to another stage. One stage forward, or straight to Closed — never backwards,
-      never skipping, and never out of Closed. Closing requires a verdict in the same call.""",
+      """Move a deal to any stage on its board — forward, backwards, skipping stages, or out of
+      Closed to reopen it. Pass a verdict too when closing if one is known (optional).""",
       {"board": _BOARD,
        "record_id": _RECORD,
        "stage": {"type": "string", "description": "Stage name or enum, e.g. \"Negotiation\" or "
                                                   "\"NEGOTIATION\"."},
        "verdict": {"type": "string",
-                   "description": "Required when moving to Closed. One of the verdicts on that "
-                                  "board — see crm_context boards."},
+                   "description": "Optional. The verdict to record with the move, usually when "
+                                  "closing. One of the verdicts on that board — see crm_context "
+                                  "boards."},
        "reason": _REASON},
       required=["board", "record_id", "stage"], readonly=False, writes=True, confirm=True)
 def set_stage(args, p):
@@ -840,7 +845,7 @@ def set_stage(args, p):
     writes, rejects, flags = guard.plan(side, rec, stage=target, fields=fields,
                                         reason=args.get("reason"))
     what = "move %s -> %s" % (rec.get("stage") or "(no stage)", target)
-    if not args.get("confirm"):
+    if args.get("preview"):
         return guard.preview(side, rec, writes, rejects, flags, what)
     return guard.apply(side, rec, writes, rejects, flags, p, what, reason=args.get("reason"))
 
@@ -893,7 +898,7 @@ def stamp_step(args, p):
                       "writes_prose": step.get("writes"), "ladder": step.get("loop"),
                       "timed_from": step.get("anchor"),
                       "moves_stage_to": stage}}
-    if not args.get("confirm"):
+    if args.get("preview"):
         return guard.preview(side, rec, writes, rejects, flags, what, extra=extra)
     out = guard.apply(side, rec, writes, rejects, flags, p, what, reason=args.get("reason"))
     out.update(extra)
@@ -908,9 +913,8 @@ def stamp_step(args, p):
        "record_id": _RECORD,
        "verdict": {"type": "string", "description": "See crm_context boards for the list."},
        "reason": {"type": "string",
-                  "description": "Required. For Do Not Contact, quote the sentence that asked for "
-                                 "it — the request has consequences outside the CRM."}},
-      required=["board", "record_id", "verdict", "reason"], readonly=False, writes=True,
+                  "description": "Why, in the user's words. Recorded in the audit trail."}},
+      required=["board", "record_id", "verdict"], readonly=False, writes=True,
       confirm=True)
 def set_verdict(args, p):
     side, rec = _write_target(args, p)
@@ -918,15 +922,12 @@ def set_verdict(args, p):
     vf = "finalDecision" if "finalDecision" in live else ("outcome" if "outcome" in live else None)
     if not vf:
         raise ToolError("%s has no verdict field" % side)
-    if not (args.get("reason") or "").strip():
-        raise ToolError("a verdict needs a reason — it is the only record of why the deal ended "
-                        "this way")
     writes, rejects, flags = guard.plan(side, rec, fields={vf: args["verdict"]},
-                                        reason=args["reason"])
+                                        reason=args.get("reason"))
     what = "verdict %s = %s" % (vf, spec.enum_value(args["verdict"]))
-    if not args.get("confirm"):
+    if args.get("preview"):
         return guard.preview(side, rec, writes, rejects, flags, what)
-    return guard.apply(side, rec, writes, rejects, flags, p, what, reason=args["reason"])
+    return guard.apply(side, rec, writes, rejects, flags, p, what, reason=args.get("reason"))
 
 
 @tool("log_note",
@@ -949,11 +950,11 @@ def log_note(args, p):
     body = args.get("body") or ""
     if not title or not body:
         raise ToolError("a note needs both a title and a body")
-    if not args.get("confirm"):
+    if args.get("preview"):
         return {"applied": False, "what": "note on %s" % rec.get("name"),
                 "title": title, "body": body,
                 "will_attach_to": [t[0] for t in targets],
-                "confirm": "Nothing has been written. Call again with confirm true to add it."}
+                "preview": "Preview only — nothing written. Call again without preview to add it."}
     note_id, linked, failed = crm.create_note(title, body, targets)
     guard.record_company_change(p, "note added", title,
                                 {"company_id": rec.get("companyId"), "name": rec.get("name"),
@@ -1014,14 +1015,14 @@ def create_company(args, p):
     """ % where))
     blocked = _blocklisted(domain, email)
 
-    if not args.get("confirm"):
+    if args.get("preview"):
         return {"applied": False, "what": "create company %r" % name,
                 "would_create": {"company": {"name": name, "domain": domain},
                                  "contact": contact or None},
                 "possible_duplicates": existing,
                 "blocklisted": blocked,
-                "confirm": (("REFUSED: %s is on the blocklist. " % ", ".join(blocked)) if blocked
-                            else ("Nothing has been created. %s Call again with confirm true."
+                "preview": (("REFUSED: %s is on the blocklist. " % ", ".join(blocked)) if blocked
+                            else ("Preview only — nothing created. %s Call again without preview."
                                   % ("There are possible duplicates above — check them first."
                                      if existing else ""))),
                 "next": "After creating, call tag_company to put it on a board."}
@@ -1113,11 +1114,11 @@ def tag_company(args, p):
     added = [s for s in want if s not in have]
 
     boards_for = {crm.BOARDS[s]["segment"]: s for s in crm.BOARDS}
-    if not args.get("confirm"):
+    if args.get("preview"):
         return {"applied": False, "what": "tag %s" % cur[0]["name"],
                 "company": cur[0], "tags_now": have, "tags_after": merged, "adding": added,
                 "creates_deals_on": [boards_for.get(s) for s in added],
-                "confirm": ("Nothing has been changed. Call again with confirm true. %s"
+                "preview": ("Preview only — nothing changed. Call again without preview. %s"
                             % ("Nothing to add — it already carries those tags."
                                if not added else
                                "A deal will appear on %s within about 2 minutes."
@@ -1165,9 +1166,9 @@ def undo(args, p):
     preview = [{"board": w["board"], "record_id": w["record_id"], "field": w["field"],
                 "now": cur, "back_to": w["old_value"], "action": action}
                for w, cur, action in plan_rows]
-    if not args.get("confirm"):
+    if args.get("preview"):
         return {"applied": False, "run": run_id, "would_revert": preview,
-                "confirm": "Nothing has been changed. Call again with confirm true."}
+                "preview": "Preview only — nothing changed. Call again without preview."}
 
     done, skipped = 0, []
     by_record = {}

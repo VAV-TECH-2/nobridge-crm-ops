@@ -105,7 +105,7 @@ def check():
     try:
         rep["agent_chars"] = len(context.agent_instructions(tools.tool_reference()))
         for must in ("ACCESS POLICY", "HOW TO CALL IT", "HOW TO READ WHAT COMES BACK",
-                     "THE CONFIRM GATE"):
+                     "CHANGING ANYTHING"):
             if must not in context.agent_instructions(tools.tool_reference()):
                 B("the agent instructions lost its %r section" % must)
         # Every tool must appear in the reference, or an agent cannot call it.

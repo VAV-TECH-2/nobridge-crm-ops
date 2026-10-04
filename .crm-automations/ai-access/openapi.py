@@ -69,20 +69,21 @@ def document():
     return {
         "openapi": "3.1.0",
         "info": {
-            "title": "Nobridge CRM",
+            "title": "Nobridge API Access (Contextualized)",
             "version": "1.0.0",
             "description": (
                 "Read and update Nobridge's M&A pipeline. Deals live on five boards chosen by a tag "
                 "on their Company; the workflow, the fields and the follow-up ladders are all "
                 "described by `crm_context`, which you should read before answering questions about "
-                "how the pipeline works. Write operations do nothing unless `confirm` is true — "
-                "without it they return the diff they would apply."),
+                "how the pipeline works. Write operations apply immediately; pass `preview: true` "
+                "to see the diff without changing anything."),
         },
         "servers": [{"url": PUBLIC_BASE}],
         "components": {
             "securitySchemes": {
                 "bearerAuth": {"type": "http", "scheme": "bearer",
-                               "description": "An AI Access token, issued per person."}
+                               "description": "An API Access (Contextualized) token, issued per "
+                                              "person."}
             }
         },
         "security": [{"bearerAuth": []}],

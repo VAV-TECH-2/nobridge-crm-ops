@@ -1,4 +1,4 @@
-"""The AI Access service — one process, two front doors.
+"""API Access (Contextualized) — formerly "AI Access". One process, two front doors.
 
     POST /ai/mcp/<token>        MCP over Streamable HTTP, for Claude. Token in the PATH, because a
                                 custom connector cannot be told to send a header.
@@ -55,7 +55,8 @@ PORT = int(os.environ.get("AI_ACCESS_PORT", "3300"))
 BIND = os.environ.get("AI_ACCESS_BIND", "127.0.0.1")
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_INFO = {"name": "nobridge-crm", "title": "Nobridge CRM", "version": "1.0.0"}
+SERVER_INFO = {"name": "nobridge-crm", "title": "Nobridge API Access (Contextualized)",
+               "version": "1.0.0"}
 MAX_BODY = 1024 * 1024
 
 # One lock for every tool call. See the module docstring.
