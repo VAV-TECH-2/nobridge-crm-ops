@@ -72,7 +72,7 @@ Rules for anyone touching it:
   silently blinds it on that mailbox.
 
 ## 🧠 You can talk to the CRM now — `ai-access` (live 2026-08-11)
-A connector at **`app.nobridge.co/ai/`** that lets Claude (MCP, token in the URL) or a ChatGPT
+**API Access (Contextualized)** — a connector at **`app.nobridge.co/ai/`** that lets Claude (MCP, token in the URL) or a ChatGPT
 custom GPT (OpenAPI Actions, Bearer) read the pipeline and change it. Source
 [`.crm-automations/ai-access/`](./.crm-automations/ai-access/), deployed to `/opt/nobridge-ai-access/`,
 systemd unit `nobridge-ai-access`, plus an **AI Access tab** on app.nobridge.co/ops.
@@ -91,13 +91,14 @@ imports them: one `twclient`, one `crm`, one `db`, one `rules`, one `store`, one
 `spec.py` one `workflow_spec.py`. Nothing about the pipeline is decided twice.
 
 Rules for anyone touching it:
-- **Writes go through `rules.validate(..., actor="human")`** — the autopilot's own validator, with one
-  additive parameter. `actor="human"` skips *only* the confidence bars (nothing to infer when a person
-  has said what they want). One stage forward or straight to Closed, never backwards, never out of
-  Closed, never closed without a verdict, only fields a step at that stage authorises: all identical.
-  Pacing (one stage move per deal per day) yields to a person but is flagged and recorded.
-- **Every write tool needs `confirm: true`.** Without it, it returns the diff and changes nothing. The
-  confirmation belongs in the conversation, not in the CRM afterwards.
+- **Renamed "API Access (Contextualized)" on 2026-10-04**; URL `/ai/`, unit `nobridge-ai-access` and
+  `/opt/nobridge-ai-access` keep the old name on purpose.
+- **No limits for a person's assistant (owner's decision, 2026-10-04).** Writes apply on the FIRST
+  call (`preview: true` returns the diff instead; `confirm` is accepted and ignored).
+  `rules.validate(..., actor="human")` skips every structural rule — any stage in any direction,
+  reopening Closed, closing without a verdict, any field at any stage. Only unknown
+  stages/fields/options and blocklisted companies are refused. **Do not reintroduce the confirm round
+  or the rules for this actor without being asked.** The autopilot (`actor="autopilot"`) keeps them all.
 - **AI writes land in `autopilot.db` with `source='ai'` and the asking person in `actor`**, so
   `revert.py --run N --apply` undoes them with no new tooling. Do not give this its own write log.
   `data/aiaccess.db` holds only tokens and the request log — gitignored, and not disposable.
