@@ -508,6 +508,14 @@ timestamp by hand with `update_deal`: you will get the date right and the ladder
 `nextActionDue` is in the past, and when the last inbound email was. A ladder that has run out with
 no reply is a different problem from one that never started because its anchor was never stamped.
 
+## "How many people have you reached for my company?" (a sell-side client asking)
+
+`mandate_report` with the mandate name as written on the fulfillment board (call it with no mandate
+to list them). It counts every counterparty approached for that mandate — reached, replied, met,
+NDA, data room, offers, passed, dropped — by stage, outcome and prospect type, and lists who is
+overdue. `whats_next` with `mandate` gives that mandate's work queue. The mandate is free text with
+no link to the sell deal, so match it by name; records with no mandate at all are not counted.
+
 ## "Mark them do not contact"
 
 `set_verdict` with `DO_NOT_CONTACT` and a reason. This has consequences outside the CRM, so quote

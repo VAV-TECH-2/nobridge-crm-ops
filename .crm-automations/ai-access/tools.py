@@ -548,9 +548,19 @@ def get_deal(args, p):
        "board": {"type": "string", "enum": SIDES, "description": "Restrict to one board."},
        "include_closed": {"type": "boolean",
                           "description": "Include closed deals (default false)."},
+       "mandate": {"type": "string",
+                   "description": "Only the fulfillment records for this sell-side mandate, e.g. "
+                                  "\"KMP\". Implies board=fulfillment."},
        "limit": {"type": "integer", "description": "Max rows per bucket (default 25)."}})
 def whats_next(args, p):
     limit = max(1, min(int(args.get("limit") or 25), 100))
+    mandate_values = None
+    if args.get("mandate"):
+        mandate_values, _have = _resolve_mandate(args["mandate"])
+        if len(mandate_values) != 1:
+            raise ToolError("mandate %r matches %s. Call mandate_report with no mandate to list them."
+                            % (args["mandate"], ", ".join(mandate_values) or "nothing"))
+        args = dict(args, board="fulfillment")
     sides = _scope(p, [side_or_die(args["board"])] if args.get("board") else None)
     owner = (args.get("owner") or "").strip().lower()
 
@@ -564,6 +574,8 @@ def whats_next(args, p):
                      " wm.\"nameFirstName\", wm.\"nameLastName\")) LIKE %s)" % (pat, pat))
         elif owner:
             w.append("FALSE")          # board has no owner column: it can hold nobody's work
+        if mandate_values:
+            w.append(_mandate_where(mandate_values))
         return " AND ".join(w)
 
     rows = _sweep(where, sides)
@@ -772,6 +784,174 @@ def list_members(args, p):
     members = [m for m in crm.workspace_members() if m.get("id")]
     return {"members": members, "count": len(members),
             "note": "Assign by email or full name; the write tools resolve it to the right id."}
+
+
+# ── mandates (fulfillment) ─────────────────────────────────────────────────────────────────────
+# A sell-side mandate's buyer outreach lives on the fulfillment board, one record per counterparty,
+# grouped only by the free-text `mandate` field ("KMP"). There is no relation to the sell deal yet
+# (RUNBOOK §7), so grouping is by that text, matched case-insensitively.
+
+def _mandates():
+    """[(mandate, records)] for every non-empty mandate value, biggest first."""
+    if not _has("fulfillment", "mandate"):
+        raise ToolError("the fulfillment board has no `mandate` field, so outreach cannot be grouped")
+    return [(r["mandate"], r["n"]) for r in db.rows(_q("""
+        SELECT TRIM(o.mandate) AS mandate, COUNT(*) AS n
+        FROM "{S}"."%s" o
+        WHERE o."deletedAt" IS NULL AND NULLIF(TRIM(o.mandate), '') IS NOT NULL
+        GROUP BY 1 ORDER BY 2 DESC, 1
+    """ % crm.BOARDS["fulfillment"]["table"]))]
+
+
+def _resolve_mandate(want):
+    """The mandate value(s) `want` means: an exact (case-insensitive) match wins, else substring."""
+    have = _mandates()
+    w = (want or "").strip().lower()
+    exact = [m for m, _n in have if m.lower() == w]
+    if exact:
+        return exact, have
+    return [m for m, _n in have if w and w in m.lower()], have
+
+
+def _mandate_where(values):
+    return "LOWER(TRIM(o.mandate)) IN (%s)" % ", ".join(_lit(v.lower()) for v in values)
+
+
+@tool("mandate_report",
+      """How the buyer outreach for one sell-side mandate is going — the answer to "how many people
+      have you reached for my company?". Counts every counterparty on the fulfillment board for that
+      mandate: how many were reached, replied, met, signed an NDA, entered the data room, and made
+      an offer, broken down by stage, outcome and prospect type, plus who is overdue. Call with no
+      mandate to list the mandates that exist.""",
+      {"mandate": {"type": "string",
+                   "description": "The mandate / client name as written on the fulfillment board, "
+                                  "e.g. \"KMP\". Case-insensitive; partial matches are offered back."},
+       "include_records": {"type": "boolean",
+                           "description": "Also list the open counterparties, most urgent first "
+                                          "(default false)."},
+       "limit": {"type": "integer", "description": "Max records listed (default 50, max 300)."}})
+def mandate_report(args, p):
+    _scope(p, ["fulfillment"])
+    want = (args.get("mandate") or "").strip()
+    if not want:
+        return {"mandates": [{"mandate": m, "records": n} for m, n in _mandates()],
+                "next": "Call mandate_report again with one of these mandate names."}
+    values, have = _resolve_mandate(want)
+    if not values:
+        return {"found": False, "asked_for": want,
+                "mandates": [{"mandate": m, "records": n} for m, n in have],
+                "note": "No fulfillment records carry that mandate. These are the mandates that do."}
+    if len(values) > 1:
+        return {"ambiguous": True, "asked_for": want, "candidates": values,
+                "note": "Several mandates match. Call again with the exact name."}
+
+    cols = _cols("fulfillment")
+    pick = ['o.id', 'o.name', 'o.stage::text AS stage', 'c.name AS company',
+            'LOWER(p."emailsPrimaryEmail") AS poc_email']
+    for col in ("outcome", "prospectType", "meetingOutcome", "engagementStatus"):
+        if col in cols:
+            pick.append('o."%s"::text AS "%s"' % (col, col))
+    for col in ("outreachSentAt", "repliedAt", "ndaSentAt", "vdrOpenedAt", "stageChangedAt"):
+        if col in cols:
+            pick.append(_ts(col))
+    for col in ("followUpDate", "offerExpectedBy", "lastContact"):
+        if col in cols:
+            pick.append(_date(col))
+    for col in ("country", "companyType", "nextSteps"):
+        if col in cols:
+            pick.append('o."%s"::text AS "%s"' % (col, col))
+    if "ownerId" in cols:
+        pick.append('LOWER(wm."userEmail") AS owner_email')
+    join_owner = ('LEFT JOIN "{S}"."workspaceMember" wm ON wm.id = o."ownerId"'
+                  if "ownerId" in cols else "")
+    rows = db.rows(_q("""
+        SELECT %s
+        FROM "{S}"."%s" o
+        LEFT JOIN "{S}".company c ON c.id = o."companyId"
+        LEFT JOIN "{S}".person p  ON p.id = o."pointOfContactId"
+        %s
+        WHERE o."deletedAt" IS NULL AND %s
+    """ % (",\n               ".join(pick), crm.BOARDS["fulfillment"]["table"], join_owner,
+           _mandate_where(values))))
+
+    order = spec.stage_enums("fulfillment")
+    ix = {e: i for i, e in enumerate(order)}
+
+    def reached_at_least(stage_enum):
+        """Deals at or past a stage (closed ones count by the evidence fields, not position)."""
+        n = ix.get(stage_enum)
+        return [r for r in rows if r.get("stage") in ix and ix[r["stage"]] >= n
+                and r.get("stage") != "CLOSED"]
+
+    def count(key):
+        out = {}
+        for r in rows:
+            k = r.get(key) or "(not set)"
+            out[k] = out.get(k, 0) + 1
+        return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+    by_stage = {e: 0 for e in order}
+    for r in rows:
+        k = r.get("stage") or "(no stage)"
+        by_stage[k] = by_stage.get(k, 0) + 1
+
+    today = bizdays.now().date()
+    overdue = []
+    for r in rows:
+        if r.get("stage") == "CLOSED":
+            continue
+        due = bizdays.parse_dt(r.get("followUpDate"))
+        if due and due.date() < today:
+            r["days_overdue"] = (today - due.date()).days
+            overdue.append(r)
+    overdue.sort(key=lambda r: -r["days_overdue"])
+
+    def reached(r):
+        # Most mandate lists were imported already contacted (the KMP workbook came in at the old
+        # REACHED_OUT stage with Last Contact filled), so Outreach Sent At alone undercounts badly.
+        # Any trace of contact counts: a stamp, a contact date, a reply, or a stage past Approach.
+        return bool(r.get("outreachSentAt") or r.get("lastContact") or r.get("repliedAt")
+                    or (r.get("stage") not in (None, "APPROACH", "CLOSED"))
+                    or r.get("outcome") in ("OFFER_RECEIVED", "PASSED"))
+
+    funnel = {
+        "counterparties": len(rows),
+        "reached": sum(1 for r in rows if reached(r)),
+        "teaser_stamped": sum(1 for r in rows if r.get("outreachSentAt")),
+        "replied": sum(1 for r in rows if r.get("repliedAt")),
+        "met_or_further": len(reached_at_least("MEETING_1")),
+        "nda_sent": sum(1 for r in rows if r.get("ndaSentAt")),
+        "in_data_room": sum(1 for r in rows if r.get("vdrOpenedAt")),
+        "offer_expected": by_stage.get("OFFER_EXPECTED", 0),
+        "offers_received": sum(1 for r in rows if r.get("outcome") == "OFFER_RECEIVED"),
+        "passed": sum(1 for r in rows if r.get("outcome") == "PASSED"),
+        "dropped": sum(1 for r in rows if r.get("outcome") == "DROPPED"),
+        "open": sum(1 for r in rows if r.get("stage") != "CLOSED"),
+    }
+    out = {
+        "mandate": values[0],
+        "as_of": bizdays.iso(bizdays.now()),
+        "funnel": funnel,
+        "by_stage": by_stage,
+        "by_outcome": count("outcome"),
+        "by_prospect_type": count("prospectType"),
+        "by_country": count("country") if "country" in cols else None,
+        "overdue": {"count": len(overdue), "records": overdue[:25]},
+        "notes": [
+            "`reached` counts any trace of contact: Outreach Sent At, Last Contact, a reply, or a "
+            "stage past Approach. `teaser_stamped` is the stricter Outreach Sent At count. Cold email "
+            "through the alternate sending domains never syncs, so a teaser nobody recorded is not "
+            "counted at all — say so if the number looks low, and check the campaign tool.",
+            "`met_or_further` counts open records at Meeting 1 or beyond; closed ones are counted by "
+            "their outcome instead.",
+        ],
+    }
+    if args.get("include_records"):
+        limit = max(1, min(int(args.get("limit") or 50), 300))
+        open_rows = [r for r in rows if r.get("stage") != "CLOSED"]
+        open_rows.sort(key=lambda r: (-(ix.get(r.get("stage"), -1)), r.get("followUpDate") or "9999"))
+        out["open_records"] = open_rows[:limit]
+    return out
 
 
 # ══ WRITE TOOLS ════════════════════════════════════════════════════════════════════════════════
