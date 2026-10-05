@@ -310,13 +310,22 @@ def crm_context(args, p):
     return context.render(args.get("section"))
 
 
+_SEARCH_TEXT = {
+    "networking": ("investorType", "country", "nextSteps"),
+    "fulfillment": ("mandate", "companyType", "country", "nextSteps"),
+}
+
+
 @tool("find_record",
       """Find deals, by anything you know: company name, person name, email address or domain.
       Always call this before creating anything — duplicate companies are the most common damage.
-      Returns one row per matching deal, across every board.""",
+      Returns one row per matching deal, across every board. On networking it also searches the
+      investor type, country and notes (an investor's thesis); on fulfillment the mandate, company
+      type, country and notes.""",
       {"query": {"type": "string",
                  "description": "Company name, person name, email address or domain. Partial is "
-                                "fine; matching is case-insensitive and substring."},
+                                "fine; matching is case-insensitive and substring. On networking "
+                                "and fulfillment a sector or country word works too."},
        "board": {"type": "string", "enum": SIDES,
                  "description": "Restrict to one board. Omit to search all five."},
        "limit": {"type": "integer", "description": "Max rows (default 25, max 100)."}},
@@ -329,12 +338,17 @@ def find_record(args, p):
     sides = _scope(p, [side_or_die(args["board"])] if args.get("board") else None)
     pat = _lit("%" + q.lower() + "%")
 
-    def where(_side):
-        return ("LOWER(o.name) LIKE {pat} OR LOWER(c.name) LIKE {pat}"
-                " OR LOWER(c.\"domainNamePrimaryLinkUrl\") LIKE {pat}"
-                " OR LOWER(p.\"emailsPrimaryEmail\") LIKE {pat}"
-                " OR LOWER(CONCAT_WS(' ', p.\"nameFirstName\", p.\"nameLastName\")) LIKE {pat}"
-                ).replace("{pat}", pat)
+    def where(side):
+        w = ("LOWER(o.name) LIKE {pat} OR LOWER(c.name) LIKE {pat}"
+             " OR LOWER(c.\"domainNamePrimaryLinkUrl\") LIKE {pat}"
+             " OR LOWER(p.\"emailsPrimaryEmail\") LIKE {pat}"
+             " OR LOWER(CONCAT_WS(' ', p.\"nameFirstName\", p.\"nameLastName\")) LIKE {pat}")
+        # The descriptive text columns a desk searches by — an investor's thesis, a counterparty's
+        # mandate, sector or country — when the board has them.
+        for col in _SEARCH_TEXT.get(side, ()):
+            if _has(side, col):
+                w += " OR LOWER(o.\"%s\"::text) LIKE {pat}" % col
+        return w.replace("{pat}", pat)
 
     rows = _sweep(where, sides)
     multi = evidence.company_boards()
