@@ -166,6 +166,7 @@ Full clone of the [twentyhq/twenty](https://github.com/twentyhq/twenty) monorepo
 ### `.crm-fulfillment/` — fulfillment pipeline tooling · LIVE ⚠️
 - `tw.py` — **shared Twenty API client.** Mints a JWT from `APP_SECRET` fetched live over SSH (`docker exec twenty-server-1 printenv APP_SECRET`). WORKSPACE_ID / API_KEY_ID are hardcoded constants here.
 - `setup_fields.py`, `setup_relations.py`, `setup_view.py`, `migrate_schema.py` — idempotent schema builders (safe to re-run).
+- `sales_fulfillment_setup.py` — builds the **Sales Fulfillment** board (`salesFulfillment`, sidebar → Others, created 2026-10-21): every Fulfillment field copied live from the `fulfillment` metadata, own stages New Positive → Responded → Meeting Booked → Share Back to Client. Idempotent, dry-run unless `--apply`. Not wired into `workflow_spec.py`, so the autopilot, AI Access and clienttype-sync do not touch it.
 - `import_kmp.py` — ⚠️ imports the KMP prospect workbook (277 rows), resumable via `state.json`, writes rollback manifest `created.json`.
 - `_*.py` (e.g. `_introspect_*`, `_views*`, `_wh*`) — scratch/debug utilities; not part of any pipeline.
 
